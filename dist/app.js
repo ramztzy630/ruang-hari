@@ -229,9 +229,9 @@ function updateOnlineCard(){
     card.querySelector('[data-action="online-toggle"]').innerHTML=ic(s.playing?'pause':'play');
     const active=activeLyric(onlineLyrics.lines,position);
     for(const line of card.querySelectorAll('[data-lyric-index]')){
-      const current=Number(line.dataset.lyricIndex)===active,changed=current&&!line.classList.contains('current');
+      const current=Number(line.dataset.lyricIndex)===active;
       line.classList.toggle('current',current);
-      if(changed){const box=card.querySelector('.song-lyrics');if(Date.now()-(box.manualScrollAt||0)>4000)box.scrollTo({top:Math.max(0,line.offsetTop-box.offsetTop-box.clientHeight/2+line.clientHeight/2),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});}
+      if(current)followActiveLyric(card.querySelector('.song-lyrics'),line,active);
     }
   }
 }
@@ -260,8 +260,26 @@ function adjacentOnline(direction){
 actions['online-previous']=()=>adjacentOnline(-1);actions['online-next']=()=>adjacentOnline(1);
 document.addEventListener('change',event=>{if(event.target.matches('.online-card-seek'))void nativeMusic().then(m=>m.seek({positionMs:Number(event.target.value)})).then(pollNative).catch(()=>toast('Tidak dapat mengubah posisi lagu.'));});
 document.addEventListener('click',event=>{const button=event.target.closest('[data-lyric-ms]');if(button)void nativeMusic().then(m=>m.seek({positionMs:Number(button.dataset.lyricMs)})).then(pollNative).catch(()=>toast('Tidak dapat mengubah posisi lagu.'));});
-document.addEventListener('wheel',event=>{const box=event.target.closest('.song-lyrics');if(box)box.manualScrollAt=Date.now();},{passive:true});
-document.addEventListener('touchstart',event=>{const box=event.target.closest('.song-lyrics');if(box)box.manualScrollAt=Date.now();},{passive:true});
+function lyricScrollTarget(box,line){
+  const container=box.getBoundingClientRect(),row=line.getBoundingClientRect();
+  const centered=box.scrollTop+row.top-container.top-box.clientTop-(box.clientHeight-row.height)/2;
+  return Math.max(0,Math.min(Math.max(0,box.scrollHeight-box.clientHeight),centered));
+}
+function followActiveLyric(box,line,index){
+  if(!box||box.manualTouch||Date.now()-(box.manualScrollAt||0)<4000)return;
+  const target=lyricScrollTarget(box,line);
+  // Resume after a manual-scroll pause even if the active lyric has not changed.
+  if(box.followedIndex===index&&box.followedManualAt===(box.manualScrollAt||0))return;
+  box.followedIndex=index;box.followedManualAt=box.manualScrollAt||0;
+  if(Math.abs(box.scrollTop-target)<2)return;
+  box.scrollTo({top:target,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+}
+function manualLyricsScroll(event){const box=event.target.closest('.song-lyrics');if(box)box.manualScrollAt=Date.now();}
+document.addEventListener('wheel',manualLyricsScroll,{passive:true});
+document.addEventListener('touchstart',event=>{const box=event.target.closest('.song-lyrics');if(box){box.manualTouch=true;box.manualScrollAt=Date.now();}},{passive:true});
+document.addEventListener('touchmove',manualLyricsScroll,{passive:true});
+for(const type of ['touchend','touchcancel'])document.addEventListener(type,event=>{const box=event.target.closest('.song-lyrics');if(box){box.manualTouch=false;box.manualScrollAt=Date.now();}},{passive:true});
+document.addEventListener('keydown',event=>{if(['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(event.key))manualLyricsScroll(event)});
 
 // Keep the mini-player above bottom navigation, with a dedicated drag handle.
 const miniPlayer=$('#np');

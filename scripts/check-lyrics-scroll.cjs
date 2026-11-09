@@ -1,0 +1,16 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const src=fs.readFileSync('dist/app.js','utf8');const helpers=src.slice(src.indexOf('function lyricScrollTarget('),src.indexOf('function manualLyricsScroll('));
+let now=10000,reduced=false;const calls=[];
+const box={clientTop:0,clientHeight:300,scrollHeight:1000,scrollTop:100,getBoundingClientRect:()=>({top:200}),scrollTo(options){calls.push(options);this.scrollTop=options.top}};
+const line={getBoundingClientRect:()=>({top:200+450-box.scrollTop,height:60})};
+const c=vm.createContext({Date:{now:()=>now},matchMedia:()=>({matches:reduced})});vm.runInContext(helpers,c);
+assert.equal(c.lyricScrollTarget(box,line),330);
+box.manualScrollAt=now;c.followActiveLyric(box,line,3);assert.equal(calls.length,0);
+now+=5000;c.followActiveLyric(box,line,3);assert.equal(calls.length,1);assert.equal(calls[0].behavior,'smooth');assert.equal(box.scrollTop,330);
+c.followActiveLyric(box,line,3);assert.equal(calls.length,1);
+box.scrollTop=0;box.manualScrollAt=now;box.manualTouch=true;now+=6000;c.followActiveLyric(box,line,3);assert.equal(calls.length,1);
+box.manualTouch=false;c.followActiveLyric(box,line,3);assert.equal(calls.length,2);assert.equal(box.scrollTop,330);
+reduced=true;box.manualScrollAt=now;now+=5000;box.scrollTop=0;c.followActiveLyric(box,line,3);assert.equal(calls.at(-1).behavior,'instant');
+assert.equal(c.lyricScrollTarget(box,{getBoundingClientRect:()=>({top:-900,height:40})}),0);
+assert.equal(c.lyricScrollTarget(box,{getBoundingClientRect:()=>({top:9000,height:40})}),700);
+console.log('PASS: centered/clamped lyric scrolling, manual pause, no repeated animation, same-line resume, reduced motion');

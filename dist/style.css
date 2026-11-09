@@ -16,7 +16,37 @@ html{scroll-behavior:smooth}.avatar{overflow:hidden;flex-shrink:0}.avatar img{wi
 #np .icon-btn{color:#fff;background:rgba(255,255,255,.12)}
 @media(min-width:900px){#np{left:auto;width:380px;right:24px}}
 
-.online-now{display:block!important}.online-album-art{margin:24px auto 18px;max-width:300px;aspect-ratio:1;border-radius:18px;overflow:hidden;background:#292b25}.online-album-art img{display:block;width:100%;height:100%;object-fit:cover}.online-now .song-name{font-size:22px;line-height:1.3}.online-now .song-artist{margin:8px 0 4px;line-height:1.5}.online-now .song-album{color:#a6ad9d;font-size:12px;margin:0 0 18px}.online-card-seek{width:100%;accent-color:#dce5cf}.card-time{display:flex;justify-content:flex-end;font-size:12px;color:#c4cbbb;margin-top:8px}.card-stream-state{font-size:12px;color:#c8cfbf;line-height:1.5}.lyrics-heading{display:flex;align-items:center;justify-content:space-between;margin:26px 0 12px;border-top:1px solid #ffffff20;padding-top:20px}.lyrics-heading h3{font-size:16px}.lyrics-heading small{color:#a9b29d;font-size:10px;letter-spacing:1px}.song-lyrics{position:relative;max-height:300px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#56604c transparent}.lyric-line{display:block;width:100%;text-align:left;border:0;border-radius:8px;background:transparent;color:#929b86;padding:10px 4px;font:inherit;font-size:18px;line-height:1.65;transition:color .2s,background .2s;cursor:pointer}.lyric-line.current{color:#f7f9f1;background:#ffffff0a;font-weight:700}.plain-lyrics{white-space:pre-wrap;color:#dce2d3;font-size:16px;line-height:1.9}.lyrics-message{color:#bdc5b2;font-size:13px;line-height:1.8}.online-now .text-btn{color:#dce2d3}.online-now .player-controls{justify-content:center;gap:30px}.online-now .online-album-art .vinyl-wrap{height:100%!important}.online-now .online-album-art .vinyl{max-width:75%;aspect-ratio:1}.online-now .section-head h2{font-size:14px}@media(prefers-reduced-motion:reduce){.lyric-line{transition:none}}
+.online-now{display:block!important}.online-album-art{margin:24px auto 18px;max-width:300px;aspect-ratio:1;border-radius:18px;overflow:hidden;background:#292b25}.online-album-art img{display:block;width:100%;height:100%;object-fit:cover}.online-now .song-name{font-size:22px;line-height:1.3}.online-now .song-artist{margin:8px 0 4px;line-height:1.5}.online-now .song-album{color:#a6ad9d;font-size:12px;margin:0 0 18px}.online-card-seek{width:100%;accent-color:#dce5cf}.card-time{display:flex;justify-content:flex-end;font-size:12px;color:#c4cbbb;margin-top:8px}.card-stream-state{font-size:12px;color:#c8cfbf;line-height:1.5}.lyrics-heading{display:flex;align-items:center;justify-content:space-between;margin:26px 0 12px;border-top:1px solid #ffffff20;padding-top:20px}.lyrics-heading h3{font-size:16px}.lyrics-heading small{color:#a9b29d;font-size:10px;letter-spacing:1px}.song-lyrics{position:relative;max-height:300px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#56604c transparent}.lyric-line{display:block;width:100%;text-align:left;border:0;border-radius:8px;background:transparent;color:#929b86;padding:10px 4px;font:inherit;font-size:18px;line-height:1.65;transition:color .2s,background .2s;cursor:pointer}.lyric-line.current{color:#fff;background:transparent;font-weight:700}.plain-lyrics{white-space:pre-wrap;color:#dce2d3;font-size:16px;line-height:1.9}.lyrics-message{color:#bdc5b2;font-size:13px;line-height:1.8}.online-now .text-btn{color:#dce2d3}.online-now .player-controls{justify-content:center;gap:30px}.online-now .online-album-art .vinyl-wrap{height:100%!important}.online-now .online-album-art .vinyl{max-width:75%;aspect-ratio:1}.online-now .section-head h2{font-size:14px}@media(prefers-reduced-motion:reduce){.lyric-line{transition:none}}
 
 /* Mini-player stays in the usable content region above mobile navigation. */
 #np{box-sizing:border-box;width:min(420px,calc(100vw - 24px));left:auto;right:12px;bottom:calc(90px + env(safe-area-inset-bottom));z-index:9;gap:8px;min-height:64px}#np .np-drag{touch-action:none;cursor:grab;flex:0 0 24px;border:0;background:transparent;color:#b6bead;font-size:24px;padding:8px 0;user-select:none}#np.dragging .np-drag{cursor:grabbing}#np .icon-btn{flex-shrink:0}#np .np-text{pointer-events:none}#np .np-drag:focus-visible{outline:2px solid #dce5cf;border-radius:6px}.has-mini-player main{padding-bottom:190px}@media(min-width:761px){#np{bottom:20px}.has-mini-player main{padding-bottom:110px}}nav button{min-height:44px}
+
+/* Compact album header and spacious, text-only synchronized lyrics. */
+.online-now{padding:24px!important}
+.online-now .section-head{margin-bottom:0}
+.online-now .online-album-art{width:clamp(156px,52vw,220px);max-width:100%;margin:18px auto 18px;border-radius:16px}
+.online-now .song-name{font-size:clamp(19px,4.8vw,23px);line-height:1.28;letter-spacing:-.35px;margin:0 0 6px}
+.online-now .song-artist{font-size:13px;line-height:1.45;margin:0 0 3px;color:#a7ad9f}
+.online-now .song-album{font-size:12px;line-height:1.45;margin:0 0 13px;color:#858e7e}
+.online-now .online-card-seek{display:block;box-sizing:border-box;height:28px;margin:0;cursor:pointer}
+.online-now .card-time{font-size:11px;font-variant-numeric:tabular-nums;line-height:1.4;margin-top:2px}
+.online-now .card-stream-state:empty{display:none}
+.online-now .card-stream-state{margin:6px 0;font-size:11px}
+.online-now .player-controls{display:flex;justify-content:center;align-items:center;gap:24px;margin:12px 0 0!important}
+.online-now .player-controls button{display:grid;place-items:center;flex-shrink:0;box-sizing:border-box;width:48px;height:48px;border-radius:50%;padding:0;cursor:pointer}
+.online-now .player-controls .play{width:58px;height:58px;background:#e0e9d5;color:#1b2118}
+.online-now .player-controls svg{width:23px;height:23px}
+.online-now .player-controls .play svg{width:26px;height:26px}
+.online-now .player-controls button:focus-visible{outline:2px solid #f7faef;outline-offset:4px}
+.online-now .lyrics-heading{margin:18px 0 6px;padding-top:18px;border-top:1px solid #ffffff13}
+.online-now .lyrics-heading h3{font-size:16px;line-height:1.4;margin:0}
+.online-now .lyrics-heading small{font-size:9px;color:#7f8876;letter-spacing:1.6px}
+.online-now .song-lyrics{box-sizing:border-box;position:relative;height:clamp(240px,40svh,380px);max-height:none;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-width:none;padding:18px 0 100px;scroll-padding-block:30%;overflow-anchor:none}
+.online-now .song-lyrics::-webkit-scrollbar{display:none}
+.online-now .lyric-line{display:block;width:100%;box-sizing:border-box;border:0;border-radius:0;outline-offset:-2px;box-shadow:none;background:transparent!important;color:#7d8675;font-size:clamp(18px,4.5vw,21px);font-weight:650;line-height:1.65;text-align:left;padding:10px 0;margin:0 0 8px;font-family:inherit;transition:color .28s ease;cursor:pointer;white-space:normal;overflow-wrap:anywhere}
+.online-now .lyric-line.current{background:transparent!important;box-shadow:none;color:#fff;font-weight:750}
+.online-now .lyric-line:focus-visible{outline:1px solid #b8c4a9}
+.online-now .plain-lyrics{font-size:18px;line-height:1.85;color:#c3ccb8;margin:0;overflow-wrap:anywhere}
+@media(max-width:380px){.online-now{padding:20px!important}.online-now .player-controls{gap:18px}.online-now .online-album-art{width:190px}}
+@media(max-height:650px){.online-now .online-album-art{width:150px;margin:12px auto}.online-now .song-lyrics{height:240px}}
+@media(prefers-reduced-motion:reduce){.online-now .lyric-line{transition:none}}
