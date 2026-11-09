@@ -121,13 +121,16 @@ document.addEventListener('click',async event=>{
   $('#online-native').hidden=false;$('#online-fallback-btn').hidden=true;
   $('#online-state').textContent='Menyiapkan stream…';$('#online-time').textContent='0:00 / 0:00';$('#online-seek').value=0;
   nativeSong={id,title};$('#np-title').textContent=title;
+  clearInterval(nativeTimer);nativeTimer=setInterval(pollNative,1000);
+  const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Resolver tidak merespons dalam 45 detik. Coba lagu lain.')),45000));
   try{
-    await (await nativeMusic()).playVideo({videoId:id});
+    await Promise.race([(await nativeMusic()).playVideo({videoId:id}),timeout]);
     if(nativeSong?.id!==id)return;
     $('#np').hidden=false;
-    clearInterval(nativeTimer);nativeTimer=setInterval(pollNative,1000);pollNative();
+    pollNative();
   }catch(error){
     if(nativeSong?.id!==id)return;
+    clearInterval(nativeTimer);nativeTimer=null;
     $('#online-state').textContent=error.message||'Lagu tidak bisa diputar.';
     $('#online-fallback-btn').hidden=false;
   }

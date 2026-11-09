@@ -32,6 +32,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -96,9 +97,11 @@ object StreamResolver {
                         Log.w(TAG, "refreshAfterStreamRejection gagal: ${e::class.simpleName}")
                     }
                 }
-                stream = extract(videoId)
+                stream = withTimeout(35_000L) { extract(videoId) }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                message = "Resolver stream melewati batas 35 detik. Periksa jaringan atau coba lagu lain."
             } catch (e: StreamResolveException) {
                 Log.w(TAG, "resolve gagal: reason=${e.reason}", e)
                 message =
