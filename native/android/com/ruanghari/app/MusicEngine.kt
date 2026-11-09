@@ -23,6 +23,8 @@ import androidx.media3.extractor.mp4.FragmentedMp4Extractor
 import androidx.media3.extractor.mp4.Mp4Extractor
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.Job
+import android.util.Log
 
 /**
  * Mesin pemutar native (Media3 ExoPlayer) untuk Ruang Hari.
@@ -59,20 +61,45 @@ class MusicEngine(context: Context) {
     private var currentVideoId: String? = null
     private var lastError: String? = null
     private var retriesLeft = 0
+    private var resolveJob: Job? = null
+    private var phase = "idle"
+    private var bufferDeadline: Runnable? = null
+    private var released = false
+    private fun clearDeadline() { bufferDeadline?.let { main.removeCallbacks(it) }; bufferDeadline = null }
+    private fun armDeadline() {
+        clearDeadline()
+        val seq = requestSeq.get()
+        val timeout = Runnable {
+            if (!released && seq == requestSeq.get() && player?.playbackState == Player.STATE_BUFFERING) {
+                lastError = "Server audio tidak mengirim data dalam 20 detik. Coba lagi."
+                phase = "error"
+                player?.stop()
+            }
+        }
+        bufferDeadline = timeout
+        main.postDelayed(timeout, 20_000L)
+    }
 
     fun playVideo(videoId: String, callback: StartCallback) {
         val seq = requestSeq.incrementAndGet()
+        resolveJob?.cancel()
         main.post {
+            if (released || seq != requestSeq.get()) return@post
+            clearDeadline()
+            player?.stop()
+            phase = "resolving"
             currentVideoId = videoId
             lastError = null
-            retriesLeft = 2
+            retriesLeft = 1
         }
         resolveAndStart(videoId, seq, 0L, null, callback)
     }
 
     fun playUrl(url: String) {
         requestSeq.incrementAndGet()
+        resolveJob?.cancel()
         main.post {
+            clearDeadline()
             currentVideoId = null
             lastError = null
             val p = ensurePlayer()
@@ -88,11 +115,14 @@ class MusicEngine(context: Context) {
 
     fun stop() {
         requestSeq.incrementAndGet()
+        resolveJob?.cancel()
         main.post {
+            clearDeadline()
             player?.stop()
             player?.clearMediaItems()
             currentVideoId = null
             lastError = null
+            phase = "idle"
         }
     }
 
@@ -105,10 +135,12 @@ class MusicEngine(context: Context) {
             var duration = p?.duration ?: 0L
             if (duration == C.TIME_UNSET || duration < 0L) duration = id?.let { streams[it]?.durationMs } ?: 0L
             val state =
-                when (p?.playbackState) {
-                    Player.STATE_BUFFERING -> "buffering"
-                    Player.STATE_READY -> "ready"
-                    Player.STATE_ENDED -> "ended"
+                when {
+                    lastError != null -> "error"
+                    phase == "resolving" -> StreamResolver.stage
+                    p?.playbackState == Player.STATE_BUFFERING -> "buffering"
+                    p?.playbackState == Player.STATE_READY -> "ready"
+                    p?.playbackState == Player.STATE_ENDED -> "ended"
                     else -> "idle"
                 }
             callback.onStatus(
@@ -124,7 +156,10 @@ class MusicEngine(context: Context) {
 
     fun release() {
         requestSeq.incrementAndGet()
+        resolveJob?.cancel()
         main.post {
+            clearDeadline()
+            released = true
             player?.release()
             player = null
             currentVideoId = null
@@ -138,7 +173,7 @@ class MusicEngine(context: Context) {
         rejectedClient: String?,
         callback: StartCallback?,
     ) {
-        StreamResolver.resolve(
+        resolveJob = StreamResolver.resolve(
             appContext,
             videoId,
             rejectedClient,
@@ -147,8 +182,16 @@ class MusicEngine(context: Context) {
                     if (seq != requestSeq.get()) {
                         callback?.onError("Diganti lagu lain.")
                     } else {
-                        streams[videoId] = stream
-                        start(videoId, stream, resumeMs)
+                        try {
+                            phase = "buffering"
+                            streams[videoId] = stream
+                            start(videoId, stream, resumeMs)
+                        } catch (error: Exception) {
+                            lastError = "Gagal membuka audio: ${error.message}"
+                            phase = "error"
+                            callback?.onError(lastError!!)
+                            return@post
+                        }
                         callback?.onStarted(stream.clientName, stream.mimeType, stream.bitrate)
                     }
                 }
@@ -159,6 +202,7 @@ class MusicEngine(context: Context) {
                         callback?.onError("Diganti lagu lain.")
                     } else {
                         lastError = message
+                        phase = "error"
                         callback?.onError(message)
                     }
                 }
@@ -205,6 +249,10 @@ class MusicEngine(context: Context) {
                 .build()
         built.addListener(
             object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_BUFFERING) armDeadline()
+                    else clearDeadline()
+                }
                 override fun onPlayerError(error: PlaybackException) {
                     handleError(error)
                 }
@@ -230,15 +278,20 @@ class MusicEngine(context: Context) {
     }
 
     private fun handleError(error: PlaybackException) {
+        Log.e("RuangStream", "Player error: ${error.errorCodeName}", error)
+        clearDeadline()
         val id = currentVideoId ?: return
         val stream = streams[id]
         if (stream != null && retriesLeft > 0 && isStreamRejected(error)) {
             retriesLeft--
             val position = (player?.currentPosition ?: 0L).coerceAtLeast(0L)
+            phase = "resolving"
             resolveAndStart(id, requestSeq.get(), position, stream.clientName, null)
             return
         }
-        lastError = "Pemutaran gagal (${error.errorCodeName}). Coba lagi atau pakai player YouTube."
+        phase = "error"
+        lastError = "Pemutaran gagal (${error.errorCodeName}): ${error.cause?.message ?: error.message}"
+        player?.stop()
     }
 
     private fun isStreamRejected(error: PlaybackException): Boolean {

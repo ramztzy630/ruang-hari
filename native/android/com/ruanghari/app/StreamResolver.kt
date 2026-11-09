@@ -24,6 +24,7 @@ import com.metrolist.innertubex.extraction.strategy.PoTokenProviderKind
 import com.ruanghari.app.potoken.PoTokenGenerator
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.compression.ContentEncoding
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
@@ -39,6 +40,9 @@ import kotlinx.serialization.json.Json
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.Job
 import kotlin.time.Clock
 
 /**
@@ -50,6 +54,9 @@ import kotlin.time.Clock
  */
 object StreamResolver {
     private const val TAG = "RuangStream"
+    @Volatile var stage: String = "idle"
+        private set
+    private val watchdog = Executors.newSingleThreadScheduledExecutor()
     private const val FAILURE_TTL_MS = 5 * 60 * 1000L
     private const val DEFAULT_TTL_SECONDS = 5 * 60
     private const val PLAYER_CONFIG_URL =
@@ -81,9 +88,12 @@ object StreamResolver {
         rejectedClient: String?,
         onOk: (ResolvedStream) -> Unit,
         onFail: (String) -> Unit,
-    ) {
+    ): Job {
         appContext = context.applicationContext
-        scope.launch {
+        val completed = AtomicBoolean(false)
+        val job = scope.launch {
+            stage = "resolving"
+
             var stream: ResolvedStream? = null
             var message: String? = null
             try {
@@ -97,27 +107,42 @@ object StreamResolver {
                         Log.w(TAG, "refreshAfterStreamRejection gagal: ${e::class.simpleName}")
                     }
                 }
-                stream = withTimeout(35_000L) { extract(videoId) }
+                stream = withTimeout(30_000L) { extract(videoId) }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 Log.e(TAG, "Timeout resolver untuk videoId=$videoId", e)
-                message = "Resolver stream melewati batas 35 detik. Periksa jaringan atau coba lagu lain."
+                message = "Resolver stream melewati batas 30 detik. Periksa jaringan atau coba lagu lain."
             } catch (e: CancellationException) {
+                if (completed.compareAndSet(false, true)) onFail("Permintaan stream dibatalkan.")
                 throw e
             } catch (e: StreamResolveException) {
                 Log.w(TAG, "resolve gagal: reason=${e.reason}", e)
                 message =
                     if (e.reason == StreamResolveException.Reason.NETWORK) {
-                        "Koneksi bermasalah. Periksa internet lalu coba lagi."
+                        "Koneksi stream gagal (${e.reason}): ${e.cause?.message ?: e.message}"
                     } else {
-                        "Lagu ini tidak bisa diputar (${e.reason}). Coba lagu lain atau pakai player YouTube."
+                        "Layanan menolak stream (${e.reason}). ${e.message ?: "Coba lagi."}"
                     }
             } catch (e: Exception) {
                 Log.w(TAG, "resolve gagal", e)
                 message = "Gagal menyiapkan stream: ${e.message ?: e::class.simpleName}"
             }
             val ok = stream
-            if (ok != null) onOk(ok) else onFail(message ?: "Gagal menyiapkan stream.")
+            if (completed.compareAndSet(false, true)) {
+                if (ok != null) { stage = "resolved"; onOk(ok) }
+                else { stage = "error"; onFail(message ?: "Gagal menyiapkan stream.") }
+            }
         }
+        // Independent deadline: blocking third-party IO must not strand the Capacitor callback.
+        val deadline = watchdog.schedule({
+            if (completed.compareAndSet(false, true)) {
+                val atStage = stage
+                stage = "error"
+                onFail("Stream tidak tersedia dalam 30 detik (tahap: $atStage). Coba lagi; detail dicatat dengan tag RuangStream.")
+                job.cancel()
+            }
+        }, 30, TimeUnit.SECONDS)
+        job.invokeOnCompletion { deadline.cancel(false) }
+        return job
     }
 
     private suspend fun extract(videoId: String): ResolvedStream {
@@ -133,6 +158,7 @@ object StreamResolver {
                 allowSabr = false,
                 allowBoundedRange = true,
             )
+        stage = "extracting"
         val stream =
             requireNotNull(
                 resolveWithClientFallback(failedClients(videoId)) { clients, useLowQuality ->
@@ -210,6 +236,11 @@ object StreamResolver {
     private fun createHttpClient(context: Context) =
         HttpClient(OkHttp) {
             expectSuccess = false
+            install(HttpTimeout) {
+                requestTimeoutMillis = 15_000
+                connectTimeoutMillis = 8_000
+                socketTimeoutMillis = 10_000
+            }
             install(ContentNegotiation) {
                 json(
                     Json {
@@ -226,11 +257,12 @@ object StreamResolver {
             engine {
                 config {
                     connectionPool(okhttp3.ConnectionPool(10, 5, TimeUnit.MINUTES))
-                    connectTimeout(30, TimeUnit.SECONDS)
-                    readTimeout(60, TimeUnit.SECONDS)
-                    writeTimeout(60, TimeUnit.SECONDS)
+                    connectTimeout(8, TimeUnit.SECONDS)
+                    readTimeout(10, TimeUnit.SECONDS)
+                    writeTimeout(10, TimeUnit.SECONDS)
                     protocols(listOf(okhttp3.Protocol.HTTP_2, okhttp3.Protocol.HTTP_1_1))
-                    retryOnConnectionFailure(true)
+                    callTimeout(15, TimeUnit.SECONDS)
+                    retryOnConnectionFailure(false)
                     cache(okhttp3.Cache(File(context.cacheDir, "http_cache"), 50L * 1024L * 1024L))
                 }
             }
@@ -250,7 +282,15 @@ object StreamResolver {
                 visitorData: String,
                 cookie: String?,
             ): PoTokenResult? =
-                generator.getWebClientPoToken(videoId, visitorData)?.let { token ->
+                run {
+                    stage = "token"
+                    try {
+                        withTimeout(8_000L) { generator.getWebClientPoToken(videoId, visitorData) }
+                    } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+                        Log.w(TAG, "Token deadline reached; falling through to other clients")
+                        null
+                    } finally { stage = "extracting" }
+                }?.let { token ->
                     PoTokenResult(
                         playerRequestToken = token.playerRequestPoToken,
                         streamingDataToken = token.streamingDataPoToken,

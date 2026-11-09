@@ -98,13 +98,20 @@ function renderNative(s){
   seek.max=dur||1;if(!nativeSeeking)seek.value=Math.min(s.positionMs||0,dur||1);
   const time=clock(s.positionMs)+(dur?' / '+clock(dur):'');
   $('#online-time').textContent=time;$('#np-time').textContent=time;
-  $('#online-state').textContent=s.error||(s.state==='buffering'?'Memuat…':s.state==='ended'?'Selesai':playing?'Sedang diputar':'Dijeda');
+  const labels={resolving:'Menghubungi layanan musik…',extracting:'Mengambil stream audio…',token:'Menyiapkan akses stream…',resolved:'Membuka audio…',buffering:'Menunggu data audio…',ended:'Selesai',idle:'Pemutar belum menerima audio.'};
+  $('#online-state').textContent=s.error||(playing?'Sedang diputar':labels[s.state]||'Dijeda');
+  if(s.error)nativeResolving=false;
   $('#online-fallback-btn').hidden=!s.error;
 }
-async function pollNative(){if(!nativeSong||nativeResolving)return;try{renderNative(await (await nativeMusic()).status())}catch(error){console.warn('Music status:',error)}}
-let nativeResolving=false;
+async function pollNative(){
+  if(!nativeSong||nativeStatusBusy)return;
+  nativeStatusBusy=true;const request=nativeRequest;
+  try{const state=await (await nativeMusic()).status();if(request===nativeRequest)renderNative(state)}
+  catch(error){console.warn('Music status:',error)}finally{nativeStatusBusy=false}
+}
+let nativeResolving=false,nativeRequest=0,nativeStatusBusy=false;
 async function stopNative(){
-  nativeResolving=false;
+  ++nativeRequest;nativeResolving=false;
   clearInterval(nativeTimer);nativeTimer=null;nativeSong=null;$('#np').hidden=true;
   try{await (await nativeMusic()).stop()}catch{}
 }
@@ -121,23 +128,25 @@ document.addEventListener('click',async event=>{
   if(!window.Capacitor?.isNativePlatform?.()){useIframe(id);return}
   $('#online-video').hidden=true;$('#online-video').src='about:blank';$('#online-iframe-hint').hidden=true;
   $('#online-native').hidden=false;$('#online-fallback-btn').hidden=true;
-  $('#online-state').textContent='Menyiapkan stream…';$('#online-time').textContent='0:00 / 0:00';$('#online-seek').value=0;
-  nativeSong={id,title};nativeResolving=true;$('#np-title').textContent=title;
+  $('#online-state').textContent='Menyiapkan stream · perbaikan 09-11b…';$('#online-time').textContent='0:00 / 0:00';$('#online-seek').value=0;
+  const request=++nativeRequest;nativeSong={id,title};nativeResolving=true;$('#np-title').textContent=title;$('#np').hidden=false;
   clearInterval(nativeTimer);nativeTimer=setInterval(pollNative,1000);
-  const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Resolver tidak merespons dalam 45 detik. Coba lagu lain.')),45000));
+  let timeoutId;
+  const timeout=new Promise((_,reject)=>{timeoutId=setTimeout(()=>reject(new Error('Tidak ada jawaban dari plugin musik dalam 35 detik. Stream dihentikan.')),35000)});
   try{
     await Promise.race([(await nativeMusic()).playVideo({videoId:id}),timeout]);
-    if(nativeSong?.id!==id)return;
+    if(request!==nativeRequest)return;
     nativeResolving=false;
     $('#np').hidden=false;
     pollNative();
   }catch(error){
-    if(nativeSong?.id!==id)return;
+    if(request!==nativeRequest)return;
     nativeResolving=false;
     clearInterval(nativeTimer);nativeTimer=null;
+    try{await (await nativeMusic()).stop()}catch{}
     $('#online-state').textContent=error.message||'Lagu tidak bisa diputar.';
     $('#online-fallback-btn').hidden=false;
-  }
+  }finally{clearTimeout(timeoutId)}
 });
 $('#online-player-dialog').addEventListener('close',()=>{$('#online-video').src='about:blank';});
 $('#online-seek').addEventListener('input',()=>{nativeSeeking=true;$('#online-time').textContent=clock(+$('#online-seek').value)+' / '+clock(+$('#online-seek').max)});

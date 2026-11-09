@@ -449,12 +449,15 @@ class PoTokenWebView private constructor(
 
         // Init does network round-trips (botguard Create/GenerateIT) + JS execution; a WebView
         // that hasn't finished after this long has a dead/wedged renderer or dead network.
-        private const val INIT_TIMEOUT_MS = 45_000L
+        private const val INIT_TIMEOUT_MS = 8_000L
 
         // A live renderer mints a poToken in well under a second.
-        private const val GENERATE_TIMEOUT_MS = 15_000L
+        private const val GENERATE_TIMEOUT_MS = 6_000L
 
         private val httpClient = OkHttpClient.Builder()
+            .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
             .build()
 
         suspend fun getNewPoTokenGenerator(context: Context): PoTokenWebView {
