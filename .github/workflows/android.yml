@@ -82,7 +82,9 @@ jobs:
           echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
 
           printf 'sdk.dir=%s\n' "$SDK_ROOT" > android/local.properties
-
+    
+      - name: Install music plugin
+        run: node scripts/install-music-native.mjs
       - name: Prepare Android resources
         run: node scripts/android-resources.mjs
 
