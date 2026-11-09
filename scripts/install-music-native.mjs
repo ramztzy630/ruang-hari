@@ -65,10 +65,17 @@ dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
     implementation 'com.jakewharton.timber:timber:5.0.1'
     implementation 'androidx.media3:media3-exoplayer:1.5.1'
+    implementation 'androidx.media3:media3-session:1.5.1'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.1.5'
 }
 `;
   await writeFile(appPath, app);
+}
+
+let upgradedApp = await readFile(appPath, 'utf8');
+if (!upgradedApp.includes('androidx.media3:media3-session:')) {
+  upgradedApp += "\ndependencies { implementation 'androidx.media3:media3-session:1.5.1' }\n";
+  await writeFile(appPath, upgradedApp);
 }
 
 // 4) minSdk 26 (syarat Metrolist / InnerTubeX); template Capacitor 7 memakai 23.
@@ -82,8 +89,11 @@ if (/minSdkVersion\s*=\s*\d+/.test(vars)) {
 // 5) Izin tambahan di manifest.
 const manifestPath = 'android/app/src/main/AndroidManifest.xml';
 let manifest = await readFile(manifestPath, 'utf8');
-for (const permission of ['android.permission.ACCESS_NETWORK_STATE', 'android.permission.WAKE_LOCK']) {
+for (const permission of ['android.permission.ACCESS_NETWORK_STATE', 'android.permission.WAKE_LOCK', 'android.permission.FOREGROUND_SERVICE', 'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK']) {
   if (!manifest.includes(permission)) manifest = manifest.replace('<application', `<uses-permission android:name="${permission}"/>\n    <application`);
+}
+if (!manifest.includes('android:name=".RuangMusicService"')) {
+  manifest = manifest.replace('</application>', `<service android:name=".RuangMusicService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="mediaPlayback"><intent-filter><action android:name="androidx.media3.session.MediaSessionService"/></intent-filter></service>\n</application>`);
 }
 await writeFile(manifestPath, manifest);
 

@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+const src=fs.readFileSync('dist/app.js','utf8');
+const helpers=src.slice(src.indexOf('function miniBounds()'),src.indexOf('const dragHandle='));
+let player={left:12,top:400,width:336,height:64};
+const miniPlayer={hidden:false,style:{},getBoundingClientRect:()=>player};
+const context=vm.createContext({window:{innerWidth:360,innerHeight:800,visualViewport:{width:360,height:800}},document:{querySelector:()=>({getBoundingClientRect:()=>({top:720})}),body:{classList:{toggle(){}}}},getComputedStyle:()=>({position:'fixed'}),miniPlayer,miniManual:false,miniPosition:null});
+vm.runInContext(helpers,context);
+let bounds=context.miniBounds();assert.equal(bounds.maxY+player.height,710);
+let point=context.clampMini({x:999,y:999},bounds);assert.equal(point.x,14);assert.equal(point.y,646);
+context.positionMiniPlayer();assert.equal(miniPlayer.style.bottom,'90px');
+context.miniManual=true;context.miniPosition={x:-100,y:999};context.positionMiniPlayer();assert.equal(miniPlayer.style.left,'10px');assert.equal(miniPlayer.style.top,'646px');
+context.window.visualViewport.height=400;context.positionMiniPlayer();assert.equal(miniPlayer.style.top,'318px');
+console.log('PASS: mini-player default and drag stay above tabs; viewport/keyboard clamp works');

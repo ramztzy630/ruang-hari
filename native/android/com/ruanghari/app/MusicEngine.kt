@@ -25,6 +25,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Job
 import android.util.Log
+import android.net.Uri
+import com.getcapacitor.JSObject
 
 /**
  * Mesin pemutar native (Media3 ExoPlayer) untuk Ruang Hari.
@@ -54,6 +56,24 @@ class MusicEngine(context: Context) {
     private val appContext = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val streams = ConcurrentHashMap<String, ResolvedStream>()
+    private val displayMetadata = ConcurrentHashMap<String, MediaMetadata>()
+    fun setDisplayMetadata(id: String, title: String, artist: String, album: String, cover: String) {
+        val builder = MediaMetadata.Builder().setTitle(title).setArtist(artist).setAlbumTitle(album)
+        if (cover.startsWith("https://")) builder.setArtworkUri(Uri.parse(cover))
+        displayMetadata.clear()
+        displayMetadata[id] = builder.build()
+    }
+    // Called on the main thread by status()'s callback.
+    fun metadataSnapshot(): JSObject {
+        val item = player?.currentMediaItem
+        val info = item?.mediaMetadata
+        return JSObject().apply {
+            put("title", info?.title?.toString().orEmpty())
+            put("artistName", info?.artist?.toString().orEmpty())
+            put("album", info?.albumTitle?.toString().orEmpty())
+            put("cover", info?.artworkUri?.toString().orEmpty())
+        }
+    }
     private val requestSeq = AtomicLong(0)
 
     // Hanya disentuh dari main thread.
@@ -218,12 +238,14 @@ class MusicEngine(context: Context) {
                 .setMediaId(videoId)
                 .setCustomCacheKey(videoId) // jadi DataSpec.key, dipakai resolver di bawah
                 .setMediaMetadata(
-                    MediaMetadata.Builder().setTitle(stream.title).setArtist(stream.author).build(),
+                    displayMetadata[videoId] ?: MediaMetadata.Builder().setTitle(stream.title).setArtist(stream.author).build(),
                 ).build()
         p.setMediaItem(item, resumeMs)
         p.prepare()
         p.playWhenReady = true
     }
+
+    fun sessionPlayer(): ExoPlayer = ensurePlayer()
 
     private fun ensurePlayer(): ExoPlayer {
         player?.let { return it }

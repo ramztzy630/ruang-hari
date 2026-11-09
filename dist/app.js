@@ -149,15 +149,15 @@ document.addEventListener('click',async event=>{
   $('#online-video').hidden=true;$('#online-video').src='about:blank';$('#online-iframe-hint').hidden=true;
   $('#online-native').hidden=false;$('#online-fallback-btn').hidden=true;
   $('#online-state').textContent='Menyiapkan stream · perbaikan 09-11d…';$('#online-time').textContent='0:00 / 0:00';$('#online-seek').value=0;
-  const request=++nativeRequest;nativeSong={id,title};onlineCurrent={...(onlineSongs.get(id)||{}),id,title};onlineState={state:'resolving'};onlineLyrics={state:'loading',lines:[],plain:''};lyricsTrackKey='';++lyricsSequence;refreshMusicCards();nativeResolving=true;$('#np-title').textContent=title;$('#np').hidden=false;
+  const request=++nativeRequest;nativeSong={id,title};onlineCurrent={...(onlineSongs.get(id)||{}),id,title};onlineState={state:'resolving'};onlineLyrics={state:'loading',lines:[],plain:''};lyricsTrackKey='';++lyricsSequence;refreshMusicCards();nativeResolving=true;$('#np-title').textContent=title;$('#np').hidden=false;positionMiniPlayer();
   clearInterval(nativeTimer);nativeTimer=setInterval(pollNative,1000);
   let timeoutId;
   const timeout=new Promise((_,reject)=>{timeoutId=setTimeout(()=>reject(new Error('Tidak ada jawaban dari plugin musik dalam 35 detik. Stream dihentikan.')),35000)});
   try{
-    await Promise.race([nativeMusic().then(async m=>{const info=await m.diagnostics();if(info.nativeBuild!=='09-11c')throw new Error('Plugin Android masih versi lama. Build ulang APK dengan semua file terbaru.');if(request===nativeRequest)$('#online-state').textContent='Native 09-11c terhubung · mengambil stream…';return m.playVideo({videoId:id})}),timeout]);
+    await Promise.race([nativeMusic().then(async m=>{const info=await m.diagnostics();if(info.nativeBuild!=='09-11c')throw new Error('Plugin Android masih versi lama. Build ulang APK dengan semua file terbaru.');if(request===nativeRequest)$('#online-state').textContent='Native 09-11c terhubung · mengambil stream…';return m.playVideo({videoId:id,title,artist:onlineCurrent?.artistName||'',album:onlineCurrent?.album||'',cover:onlineCurrent?.cover||''})}),timeout]);
     if(request!==nativeRequest)return;
     nativeResolving=false;
-    $('#np').hidden=false;
+    $('#np').hidden=false;positionMiniPlayer();
     pollNative();
   }catch(error){
     if(request!==nativeRequest)return;
@@ -262,3 +262,68 @@ document.addEventListener('change',event=>{if(event.target.matches('.online-card
 document.addEventListener('click',event=>{const button=event.target.closest('[data-lyric-ms]');if(button)void nativeMusic().then(m=>m.seek({positionMs:Number(button.dataset.lyricMs)})).then(pollNative).catch(()=>toast('Tidak dapat mengubah posisi lagu.'));});
 document.addEventListener('wheel',event=>{const box=event.target.closest('.song-lyrics');if(box)box.manualScrollAt=Date.now();},{passive:true});
 document.addEventListener('touchstart',event=>{const box=event.target.closest('.song-lyrics');if(box)box.manualScrollAt=Date.now();},{passive:true});
+
+// Keep the mini-player above bottom navigation, with a dedicated drag handle.
+const miniPlayer=$('#np');
+let miniManual=false,miniPosition=null,miniDrag=null;
+function miniBounds(){
+  const visual=window.visualViewport;
+  const width=visual?.width||window.innerWidth,height=visual?.height||window.innerHeight;
+  const nav=document.querySelector('aside'),rect=nav?.getBoundingClientRect();
+  const bottomNav=nav&&getComputedStyle(nav).position==='fixed'&&rect.top>height/2;
+  const bottom=bottomNav?Math.min(rect.top-10,height-18):height-18;
+  const player=miniPlayer.getBoundingClientRect();
+  return {minX:10,maxX:Math.max(10,width-player.width-10),minY:18,maxY:Math.max(18,bottom-player.height),width,height};
+}
+function clampMini(point,bounds){return {x:Math.max(bounds.minX,Math.min(bounds.maxX,point.x)),y:Math.max(bounds.minY,Math.min(bounds.maxY,point.y))};}
+function positionMiniPlayer(){
+  if(miniPlayer.hidden)return;
+  const bounds=miniBounds();
+  if(miniManual&&miniPosition){miniPosition=clampMini(miniPosition,bounds);miniPlayer.style.left=miniPosition.x+'px';miniPlayer.style.top=miniPosition.y+'px';miniPlayer.style.bottom='auto';miniPlayer.style.right='auto';}
+  else {miniPlayer.style.top='auto';miniPlayer.style.bottom=Math.max(18,bounds.height-bounds.maxY-miniPlayer.getBoundingClientRect().height)+'px';}
+  document.body.classList.toggle('has-mini-player',!miniPlayer.hidden);
+}
+const dragHandle=$('#np-drag');
+dragHandle.addEventListener('pointerdown',event=>{
+  if(event.button!==0)return;
+  const rect=miniPlayer.getBoundingClientRect();miniDrag={id:event.pointerId,dx:event.clientX-rect.left,dy:event.clientY-rect.top};
+  dragHandle.setPointerCapture(event.pointerId);miniPlayer.classList.add('dragging');event.preventDefault();
+});
+dragHandle.addEventListener('pointermove',event=>{
+  if(!miniDrag||event.pointerId!==miniDrag.id)return;
+  miniManual=true;miniPosition=clampMini({x:event.clientX-miniDrag.dx,y:event.clientY-miniDrag.dy},miniBounds());positionMiniPlayer();
+});
+function endMiniDrag(event){if(!miniDrag||event.pointerId!==miniDrag.id)return;miniDrag=null;miniPlayer.classList.remove('dragging');}
+dragHandle.addEventListener('pointerup',endMiniDrag);dragHandle.addEventListener('pointercancel',endMiniDrag);
+dragHandle.addEventListener('dblclick',()=>{miniManual=false;miniPosition=null;miniPlayer.style.left='';miniPlayer.style.right='';positionMiniPlayer()});
+dragHandle.addEventListener('keydown',event=>{
+  const deltas={ArrowLeft:[-20,0],ArrowRight:[20,0],ArrowUp:[0,-20],ArrowDown:[0,20]};
+  if(event.key==='Home'){miniManual=false;miniPosition=null;miniPlayer.style.left='';miniPlayer.style.right='';positionMiniPlayer();event.preventDefault();return;}
+  const delta=deltas[event.key];if(!delta)return;
+  const rect=miniPlayer.getBoundingClientRect();miniManual=true;miniPosition=clampMini({x:rect.left+delta[0],y:rect.top+delta[1]},miniBounds());positionMiniPlayer();event.preventDefault();
+});
+window.addEventListener('resize',positionMiniPlayer);window.visualViewport?.addEventListener('resize',positionMiniPlayer);
+new MutationObserver(()=>{document.body.classList.toggle('has-mini-player',!miniPlayer.hidden);positionMiniPlayer()}).observe(miniPlayer,{attributes:true,attributeFilter:['hidden']});
+new ResizeObserver(positionMiniPlayer).observe(document.querySelector('aside'));
+let restoringMusic=false;
+async function restoreNativePlayback(){
+  if(!window.Capacitor?.isNativePlatform?.()||restoringMusic||nativeResolving)return;
+  restoringMusic=true;
+  try{
+    const bridge=await nativeMusic();let status;
+    for(let i=0;i<8;i++){status=await bridge.status();if(status.state!=='connecting')break;await new Promise(r=>setTimeout(r,500));}
+    if(nativeResolving)return;
+    if(!status?.videoId||status.state==='idle'){
+      if(onlineCurrent){nativeSong=null;onlineCurrent=null;onlineState={};++lyricsSequence;lyricsTrackKey='';clearInterval(nativeTimer);nativeTimer=null;$('#np').hidden=true;refreshMusicCards();}
+      return;
+    }
+    if(!onlineCurrent||onlineCurrent.id!==status.videoId){
+      const song={id:status.videoId,...(status.metadata||{})};song.title=song.title||'Musik sedang diputar';
+      nativeSong={id:song.id,title:song.title};onlineCurrent=song;onlineState=status;lyricsTrackKey='';++lyricsSequence;
+      $('#np-title').textContent=song.title;$('#online-song-title').textContent=song.title;$('#np').hidden=false;positionMiniPlayer();refreshMusicCards();
+    }
+    clearInterval(nativeTimer);nativeTimer=setInterval(pollNative,1000);renderNative(status);
+  }catch(error){console.warn('Restore playback:',error)}finally{restoringMusic=false}
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)void restoreNativePlayback()});
+setTimeout(restoreNativePlayback,500);

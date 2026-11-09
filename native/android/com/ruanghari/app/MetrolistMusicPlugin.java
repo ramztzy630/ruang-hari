@@ -1,6 +1,11 @@
 package com.ruanghari.app;
 
 import com.getcapacitor.*;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.os.IBinder;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import org.json.*;
 import java.net.*;
@@ -16,14 +21,47 @@ import java.util.concurrent.*;
  */
 @CapacitorPlugin(name = "MetrolistMusic")
 public class MetrolistMusicPlugin extends Plugin {
-    private MusicEngine engine;
+    private volatile MusicEngine engine;
+    private volatile boolean closed;
+    private volatile String bindingError;
+    private boolean bound;
+    private final CountDownLatch serviceReady = new CountDownLatch(1);
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
-
+    private final ExecutorService playbackExecutor = Executors.newFixedThreadPool(2);
     private final ExecutorService metadataExecutor = Executors.newFixedThreadPool(2);
-
-    private synchronized MusicEngine engine() {
-        if (engine == null) engine = new MusicEngine(getContext().getApplicationContext());
-        return engine;
+    private final ServiceConnection connection = new ServiceConnection() {
+        @Override public void onServiceConnected(ComponentName name, IBinder binder) {
+            try { engine = ((RuangMusicService.LocalBinder) binder).getEngine(); }
+            catch (Throwable error) { bindingError = describe(error); }
+            finally { serviceReady.countDown(); }
+        }
+        @Override public void onServiceDisconnected(ComponentName name) { engine = null; bindingError = "Layanan musik terputus. Buka ulang aplikasi."; }
+        @Override public void onNullBinding(ComponentName name) { bindingError = "Layanan musik tidak dapat dihubungkan."; serviceReady.countDown(); }
+        @Override public void onBindingDied(ComponentName name) { engine = null; bindingError = "Layanan musik terputus. Buka ulang aplikasi."; serviceReady.countDown(); }
+    };
+    @Override public void load() {
+        getActivity().runOnUiThread(() -> {
+            if (closed) return;
+            try {
+                Intent intent = new Intent(getContext(), RuangMusicService.class).setAction(RuangMusicService.LOCAL_BIND);
+                bound = getContext().getApplicationContext().bindService(intent, connection, Context.BIND_AUTO_CREATE);
+                if (!bound) { bindingError = "Gagal menghubungkan layanan musik."; serviceReady.countDown(); }
+            } catch (Throwable error) { bindingError = describe(error); serviceReady.countDown(); }
+        });
+    }
+    private MusicEngine engine() throws Exception {
+        if (closed) throw new IllegalStateException("Tampilan aplikasi sudah ditutup.");
+        if (!serviceReady.await(8, TimeUnit.SECONDS)) throw new IllegalStateException("Layanan musik tidak merespons.");
+        MusicEngine current = engine;
+        if (current == null) throw new IllegalStateException(bindingError == null ? "Layanan musik belum siap." : bindingError);
+        return current;
+    }
+    private interface EngineCommand { void run(MusicEngine engine) throws Exception; }
+    private void command(PluginCall call, EngineCommand action) {
+        playbackExecutor.execute(() -> {
+            try { action.run(engine()); call.resolve(); }
+            catch (Throwable error) { call.reject(describe(error)); }
+        });
     }
 
     /** Putar lagu YouTube Music lewat mesin native: {videoId}. */
@@ -31,9 +69,11 @@ public class MetrolistMusicPlugin extends Plugin {
         String id = call.getString("videoId", "");
         if (id == null || !id.matches("[A-Za-z0-9_-]{11}")) { call.reject("ID lagu tidak valid"); return; }
         // Keep Capacitor's plugin thread available for status/stop, even during class loading.
-        executor.execute(() -> {
+        playbackExecutor.execute(() -> {
             try {
-                engine().playVideo(id, new MusicEngine.StartCallback() {
+                MusicEngine current = engine();
+                current.setDisplayMetadata(id, call.getString("title", ""), call.getString("artist", ""), call.getString("album", ""), call.getString("cover", ""));
+                current.playVideo(id, new MusicEngine.StartCallback() {
                     @Override public void onStarted(String clientName, String mimeType, long bitrate) {
                         JSObject result = new JSObject();
                         result.put("client", clientName); result.put("mimeType", mimeType); result.put("bitrate", bitrate);
@@ -68,20 +108,26 @@ public class MetrolistMusicPlugin extends Plugin {
     @PluginMethod public void playUrl(PluginCall call) {
         String url = call.getString("url", "");
         if (url == null || !url.startsWith("https://")) { call.reject("URL HTTPS diperlukan"); return; }
-        engine().playUrl(url); call.resolve();
+        command(call, e -> e.playUrl(url));
     }
-    @PluginMethod public void pause(PluginCall call) { engine().pause(); call.resolve(); }
-    @PluginMethod public void resume(PluginCall call) { engine().resume(); call.resolve(); }
-    @PluginMethod public void stop(PluginCall call) { engine().stop(); call.resolve(); }
+    @PluginMethod public void pause(PluginCall call) { command(call, e -> e.pause()); }
+    @PluginMethod public void resume(PluginCall call) { command(call, e -> e.resume()); }
+    @PluginMethod public void stop(PluginCall call) { command(call, e -> e.stop()); }
     @PluginMethod public void seek(PluginCall call) {
         Long position = call.getLong("positionMs");
         if (position == null || position < 0) { call.reject("Posisi tidak valid"); return; }
-        engine().seek(position); call.resolve();
+        command(call, e -> e.seek(position));
     }
     @PluginMethod public void status(PluginCall call) {
-        try { engine().status(new MusicEngine.StatusCallback() {
+        MusicEngine current = engine;
+        if (current == null) {
+            JSObject result = new JSObject(); result.put("playing", false); result.put("state", "connecting");
+            result.put("error", bindingError == null ? "" : bindingError); call.resolve(result); return;
+        }
+        try { current.status(new MusicEngine.StatusCallback() {
             @Override public void onStatus(boolean playing, long positionMs, long durationMs, String state, String videoId, String error) {
                 JSObject result = new JSObject();
+                result.put("metadata", current.metadataSnapshot());
                 result.put("playing", playing);
                 result.put("positionMs", positionMs);
                 result.put("durationMs", durationMs);
@@ -171,5 +217,14 @@ public class MetrolistMusicPlugin extends Plugin {
         if(runs!=null) for(int i=0;i<runs.length();i++) { JSONObject run=runs.optJSONObject(i); if(run!=null) value.append(run.optString("text")); }
         return value.toString();
     }
-    @Override protected void handleOnDestroy() { executor.shutdownNow(); metadataExecutor.shutdownNow(); if (engine != null) engine.release(); }
+    @Override protected void handleOnDestroy() {
+        closed = true;
+        executor.shutdownNow(); metadataExecutor.shutdownNow(); playbackExecutor.shutdownNow();
+        if (bound) {
+            try { getContext().getApplicationContext().unbindService(connection); } catch (IllegalArgumentException ignored) {}
+            bound = false;
+        }
+        // Only RuangMusicService owns/releases the player. Leaving the UI must not stop it.
+        engine = null;
+    }
 }
