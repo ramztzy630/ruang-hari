@@ -1,4 +1,5 @@
-name: Build Android APK
+
+name: Build Ruang Hari Android APK
 
 on:
   push:
@@ -11,55 +12,114 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Setup Node 22
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
+          node-version: '22'
           cache: npm
 
-      - name: Use Java 21 (bawaan runner)
+      - name: Setup Java 21
+        shell: bash
         run: |
           echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
           echo "$JAVA_HOME_21_X64/bin" >> "$GITHUB_PATH"
+          "$JAVA_HOME_21_X64/bin/java" -version
 
-      - name: Android SDK platform
+      - name: Install Android SDK 37
+        shell: bash
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platforms;android-37" \
+            "build-tools;35.0.0" \
+            "platform-tools"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Check syntax
+      - name: Check JavaScript
         run: |
           npm run check
           node --check scripts/install-music-native.mjs
 
-      - name: Init Android project (web build + cap add + sync)
+      - name: Initialize Android project
         run: npm run android:init
 
-      - name: Android resources (icon, notification)
+      - name: Prepare Android resources
         run: node scripts/android-resources.mjs
 
-      - name: Install Metrolist music native (Kotlin, InnerTubeX, Media3)
+      - name: Install Metrolist native music
         run: node scripts/install-music-native.mjs
+
+      - name: Configure Android build
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path("android")
+
+          variables = root / "variables.gradle"
+          text = variables.read_text()
+          text = re.sub(
+              r'compileSdkVersion\s*=\s*\d+',
+              'compileSdkVersion = 37',
+              text
+          )
+          variables.write_text(text)
+
+          build = root / "build.gradle"
+          text = build.read_text()
+          text = re.sub(
+              r'com\.android\.tools\.build:gradle:[\d.]+',
+              'com.android.tools.build:gradle:8.13.2',
+              text
+          )
+          build.write_text(text)
+
+          wrapper = root / "gradle/wrapper/gradle-wrapper.properties"
+          text = wrapper.read_text()
+          text = re.sub(
+              r'gradle-[\d.]+-(?:all|bin)\.zip',
+              'gradle-8.13-bin.zip',
+              text
+          )
+          text = re.sub(
+              r'^networkTimeout=.*$',
+              'networkTimeout=120000',
+              text,
+              flags=re.MULTILINE
+          )
+          if 'networkTimeout=' not in text:
+              text += '\nnetworkTimeout=120000\n'
+          wrapper.write_text(text)
+
+          print("Android SDK 37 configured")
+          print("AGP 8.13.2 configured")
+          print("Gradle 8.13 configured")
+          PY
 
       - name: Build debug APK
         working-directory: android
+        shell: bash
         run: |
           chmod +x gradlew
-          java -version
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --stacktrace
 
       - name: Upload APK
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: Ruang-Hari-Android-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 14
+          
