@@ -73,6 +73,7 @@ public class MetrolistMusicPlugin extends Plugin {
             try {
                 MusicEngine current = engine();
                 current.setQueue(call.getArray("queue", new JSArray()));
+                current.setQueueMode(call.getString("mode", "shuffle"));
                 current.setDisplayMetadata(id, call.getString("title", ""), call.getString("artist", ""), call.getString("album", ""), call.getString("cover", ""));
                 current.playVideo(id, new MusicEngine.StartCallback() {
                     @Override public void onStarted(String clientName, String mimeType, long bitrate) {
@@ -90,7 +91,7 @@ public class MetrolistMusicPlugin extends Plugin {
     }
 
     private String describe(Throwable error) {
-        StringBuilder detail = new StringBuilder("Native 09-11c: ");
+        StringBuilder detail = new StringBuilder("Native 09-11e: ");
         Throwable current = error;
         for (int depth = 0; current != null && depth < 4; depth++, current = current.getCause()) {
             if (depth > 0) detail.append(" → ");
@@ -101,7 +102,7 @@ public class MetrolistMusicPlugin extends Plugin {
 
     @PluginMethod public void diagnostics(PluginCall call) {
         JSObject result = new JSObject();
-        result.put("nativeBuild", "09-11c");
+        result.put("nativeBuild", "09-11e");
         result.put("androidApi", android.os.Build.VERSION.SDK_INT);
         call.resolve(result);
     }

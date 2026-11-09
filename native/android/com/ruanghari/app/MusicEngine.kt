@@ -60,7 +60,26 @@ class MusicEngine(context: Context) {
     private val displayMetadata = ConcurrentHashMap<String, MediaMetadata>()
     private data class QueueTrack(val id: String, val title: String, val artist: String, val album: String, val cover: String)
     @Volatile private var shuffleQueue: List<QueueTrack> = emptyList()
+    @Volatile private var queueMode = "shuffle"
     private var autoplayPending = false
+
+    // --- Lagu berikutnya otomatis (gaya Spotify) ---
+    // Lagu berikutnya di-resolve dan dimasukkan ke playlist ExoPlayer SEBELUM lagu aktif habis. Transisi terjadi di dalam
+    // ExoPlayer, jadi pemutaran tidak pernah berhenti dan service tetap foreground (jaringan tidak diblokir saat layar mati).
+    // Hanya disentuh dari main thread.
+    private var pendingNext: String? = null   // sudah di-resolve, menunggu dimasukkan ke ExoPlayer
+    private var nextVideoId: String? = null   // sudah ada di playlist ExoPlayer setelah lagu aktif
+    private var prefetching: String? = null
+    private var prefetchJob: Job? = null
+    private var prefetchFailures = 0
+    private var prefetchRetryAt = 0L
+    private val recentIds = ArrayDeque<String>()
+    private val failedNext = HashSet<String>()
+    private var tickerRunning = false
+    private val ticker = Runnable {
+        tickerRunning = false
+        tick()
+    }
     fun setQueue(items: JSONArray) {
         shuffleQueue = (0 until minOf(items.length(), 40)).mapNotNull { index ->
             val item = items.optJSONObject(index) ?: return@mapNotNull null
@@ -69,24 +88,166 @@ class MusicEngine(context: Context) {
             QueueTrack(id, item.optString("title"), item.optString("artistName"), item.optString("album"), item.optString("cover"))
         }.distinctBy { it.id }
     }
-    private fun shuffleNext() {
-        if (autoplayPending) return
+    fun setQueueMode(mode: String) {
+        queueMode = if (mode == "sequential") "sequential" else "shuffle"
+    }
+
+    private fun rememberRecent(id: String) {
+        recentIds.remove(id)
+        recentIds.addLast(id)
+        val keep = maxOf(1, minOf(shuffleQueue.size - 2, 10))
+        while (recentIds.size > keep) recentIds.removeFirst()
+    }
+
+    /** Pilih lagu berikutnya: berurutan (playlist) atau acak tanpa mengulang yang baru diputar (hasil pencarian). */
+    private fun pickNext(): QueueTrack? {
         val queue = shuffleQueue
-        val index = ShufflePolicy.pickIndex(queue.map { it.id }, currentVideoId.orEmpty())
-        if (index < 0) return
-        val next = queue[index]
+        if (queue.size < 2) return null
+        val current = currentVideoId.orEmpty()
+        if (queueMode == "sequential") {
+            val currentIndex = queue.indexOfFirst { it.id == current }
+            for (step in 1..queue.size) {
+                val candidate = queue[(currentIndex + step).mod(queue.size)]
+                if (candidate.id != current && candidate.id !in failedNext) return candidate
+            }
+            return null
+        }
+        var candidates = queue.filter { it.id != current && it.id !in recentIds && it.id !in failedNext }
+        if (candidates.isEmpty()) candidates = queue.filter { it.id != current && it.id !in failedNext }
+        if (candidates.isEmpty()) return null
+        val index = ShufflePolicy.pickIndex(candidates.map { it.id }, current)
+        return if (index < 0) null else candidates[index]
+    }
+
+    private fun dropNext() {
+        pendingNext = null
+        nextVideoId = null
+        prefetching = null
+        prefetchJob?.cancel()
+        prefetchJob = null
+        prefetchFailures = 0
+        prefetchRetryAt = 0L
+        failedNext.clear()
+    }
+
+    private fun startTicker() {
+        if (tickerRunning || released) return
+        tickerRunning = true
+        main.postDelayed(ticker, 2000L)
+    }
+
+    private fun stopTicker() {
+        tickerRunning = false
+        main.removeCallbacks(ticker)
+    }
+
+    private fun tick() {
+        if (released) return
+        val p = player ?: return
+        if (currentVideoId == null) return
+        maybePrefetch(p)
+        maybeAppendNext(p)
+        startTicker()
+    }
+
+    private fun maybePrefetch(p: ExoPlayer) {
+        if (nextVideoId != null || pendingNext != null || prefetching != null) return
+        if (!p.isPlaying || p.currentPosition < 4000L) return
+        if (System.currentTimeMillis() < prefetchRetryAt || prefetchFailures >= 4) return
+        val next = pickNext() ?: return
+        val seq = requestSeq.get()
+        prefetching = next.id
+        setDisplayMetadata(next.id, next.title, next.artist, next.album, next.cover)
+        prefetchJob = StreamResolver.resolve(
+            appContext,
+            next.id,
+            null,
+            onOk = { stream ->
+                main.post {
+                    if (released || seq != requestSeq.get() || prefetching != next.id) return@post
+                    prefetching = null
+                    streams[next.id] = stream
+                    pendingNext = next.id
+                }
+            },
+            onFail = { message ->
+                main.post {
+                    if (released || seq != requestSeq.get() || prefetching != next.id) return@post
+                    prefetching = null
+                    prefetchFailures++
+                    prefetchRetryAt = System.currentTimeMillis() + 5000L * prefetchFailures
+                    if (!(message.contains("NETWORK") || message.contains("Koneksi"))) failedNext.add(next.id)
+                    Log.w("RuangStream", "Prefetch lagu berikutnya gagal: $message")
+                }
+            },
+        )
+    }
+
+    /** Masukkan lagu berikutnya ke playlist ExoPlayer saat lagu aktif tinggal sebentar lagi. */
+    private fun maybeAppendNext(p: ExoPlayer) {
+        val id = pendingNext ?: return
+        if (nextVideoId != null) return
+        val duration = p.duration
+        if (duration == C.TIME_UNSET || duration <= 0L) return
+        if (duration - p.currentPosition > 35_000L) return
+        val stream = streams[id]
+        if (stream == null) {
+            pendingNext = null
+            return
+        }
+        while (p.mediaItemCount > p.currentMediaItemIndex + 1) p.removeMediaItem(p.mediaItemCount - 1)
+        p.addMediaItem(buildItem(id, stream))
+        nextVideoId = id
+        pendingNext = null
+    }
+
+    /** Cadangan bila lagu berikutnya belum sempat diantre: lanjutkan setelah STATE_ENDED. */
+    private fun advanceAfterEnd() {
+        if (autoplayPending || released) return
+        val pendingId = pendingNext
+        val pendingStream = pendingId?.let { streams[it] }
+        if (pendingId != null && pendingStream != null) {
+            currentVideoId?.let { rememberRecent(it) }
+            currentVideoId = pendingId
+            pendingNext = null
+            nextVideoId = null
+            prefetching = null
+            prefetchFailures = 0
+            phase = "buffering"
+            lastError = null
+            retriesLeft = 1
+            start(pendingId, pendingStream, 0L)
+            return
+        }
+        val next = pickNext() ?: shuffleQueue.singleOrNull() ?: return
+        startAutoplay(next, 0)
+    }
+
+    private fun startAutoplay(next: QueueTrack, attempt: Int) {
         autoplayPending = true
         setDisplayMetadata(next.id, next.title, next.artist, next.album, next.cover)
         playVideo(next.id, object : StartCallback {
             override fun onStarted(clientName: String, mimeType: String, bitrate: Long) { autoplayPending = false }
-            override fun onError(message: String) { autoplayPending = false }
+            override fun onError(message: String) {
+                autoplayPending = false
+                val network = message.contains("NETWORK") || message.contains("Koneksi")
+                if (!network || attempt >= 3 || released) return
+                val seq = requestSeq.get()
+                main.postDelayed({
+                    if (!released && seq == requestSeq.get()) startAutoplay(next, attempt + 1)
+                }, 4000L * (attempt + 1))
+            }
         })
     }
+
     fun setDisplayMetadata(id: String, title: String, artist: String, album: String, cover: String) {
         val builder = MediaMetadata.Builder().setTitle(title).setArtist(artist).setAlbumTitle(album)
         if (cover.startsWith("https://")) builder.setArtworkUri(Uri.parse(cover))
-        displayMetadata.clear()
         displayMetadata[id] = builder.build()
+        if (displayMetadata.size > 16) {
+            val keep = setOf(id, currentVideoId, nextVideoId, pendingNext)
+            displayMetadata.keys.filter { it !in keep }.forEach { displayMetadata.remove(it) }
+        }
     }
     // Called on the main thread by status()'s callback.
     fun metadataSnapshot(): JSObject {
@@ -132,6 +293,8 @@ class MusicEngine(context: Context) {
             if (released || seq != requestSeq.get()) return@post
             clearDeadline()
             player?.stop()
+            dropNext()
+            currentVideoId?.takeIf { it != videoId }?.let { rememberRecent(it) }
             phase = "resolving"
             currentVideoId = videoId
             lastError = null
@@ -145,6 +308,7 @@ class MusicEngine(context: Context) {
         resolveJob?.cancel()
         main.post {
             clearDeadline()
+            dropNext()
             currentVideoId = null
             lastError = null
             val p = ensurePlayer()
@@ -170,6 +334,9 @@ class MusicEngine(context: Context) {
             phase = "idle"
             autoplayPending = false
             shuffleQueue = emptyList()
+            dropNext()
+            stopTicker()
+            recentIds.clear()
         }
     }
 
@@ -206,6 +373,7 @@ class MusicEngine(context: Context) {
         resolveJob?.cancel()
         main.post {
             clearDeadline()
+            stopTicker()
             released = true
             player?.release()
             player = null
@@ -257,19 +425,21 @@ class MusicEngine(context: Context) {
         )
     }
 
+    private fun buildItem(videoId: String, stream: ResolvedStream): MediaItem =
+        MediaItem.Builder()
+            .setUri(stream.url)
+            .setMediaId(videoId)
+            .setCustomCacheKey(videoId) // jadi DataSpec.key, dipakai resolver di bawah
+            .setMediaMetadata(
+                displayMetadata[videoId] ?: MediaMetadata.Builder().setTitle(stream.title).setArtist(stream.author).build(),
+            ).build()
+
     private fun start(videoId: String, stream: ResolvedStream, resumeMs: Long) {
         val p = ensurePlayer()
-        val item =
-            MediaItem.Builder()
-                .setUri(stream.url)
-                .setMediaId(videoId)
-                .setCustomCacheKey(videoId) // jadi DataSpec.key, dipakai resolver di bawah
-                .setMediaMetadata(
-                    displayMetadata[videoId] ?: MediaMetadata.Builder().setTitle(stream.title).setArtist(stream.author).build(),
-                ).build()
-        p.setMediaItem(item, resumeMs)
+        p.setMediaItem(buildItem(videoId, stream), resumeMs)
         p.prepare()
         p.playWhenReady = true
+        startTicker()
     }
 
     fun sessionPlayer(): ExoPlayer = ensurePlayer()
@@ -301,7 +471,26 @@ class MusicEngine(context: Context) {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_BUFFERING) armDeadline()
                     else clearDeadline()
-                    if (playbackState == Player.STATE_ENDED && built.playWhenReady) shuffleNext()
+                    if (playbackState == Player.STATE_ENDED && built.playWhenReady) advanceAfterEnd()
+                }
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) return
+                    val id = mediaItem?.mediaId ?: return
+                    if (id != nextVideoId) return
+                    currentVideoId?.let { rememberRecent(it) }
+                    currentVideoId = id
+                    nextVideoId = null
+                    pendingNext = null
+                    prefetching = null
+                    prefetchFailures = 0
+                    prefetchRetryAt = 0L
+                    phase = "buffering"
+                    lastError = null
+                    retriesLeft = 1
+                    main.post {
+                        val current = player ?: return@post
+                        if (current.currentMediaItemIndex > 0) current.removeMediaItems(0, current.currentMediaItemIndex)
+                    }
                 }
                 override fun onPlayerError(error: PlaybackException) {
                     handleError(error)
@@ -330,6 +519,25 @@ class MusicEngine(context: Context) {
     private fun handleError(error: PlaybackException) {
         Log.e("RuangStream", "Player error: ${error.errorCodeName}", error)
         clearDeadline()
+        val queued = nextVideoId
+        if (queued != null) {
+            // Kemungkinan besar error datang dari lagu berikutnya yang sedang disiapkan: jangan matikan lagu aktif.
+            nextVideoId = null
+            pendingNext = null
+            streams.remove(queued)
+            failedNext.add(queued)
+            val active = currentVideoId
+            val activeStream = active?.let { streams[it] }
+            val p = player
+            if (active != null && activeStream != null && p != null && p.currentMediaItem?.mediaId == active) {
+                try {
+                    start(active, activeStream, p.currentPosition.coerceAtLeast(0L))
+                    return
+                } catch (e: Exception) {
+                    Log.w("RuangStream", "Gagal memulihkan lagu aktif: ${e.message}")
+                }
+            }
+        }
         val id = currentVideoId ?: return
         val stream = streams[id]
         if (stream != null && retriesLeft > 0 && isStreamRejected(error)) {

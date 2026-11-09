@@ -166,7 +166,7 @@ document.addEventListener('click',async event=>{
   let timeoutId;
   const timeout=new Promise((_,reject)=>{timeoutId=setTimeout(()=>reject(new Error('Tidak ada jawaban dari plugin musik dalam 35 detik. Stream dihentikan.')),35000)});
   try{
-    await Promise.race([nativeMusic().then(async m=>{const info=await m.diagnostics();if(info.nativeBuild!=='09-11c')throw new Error('Plugin Android masih versi lama. Build ulang APK dengan semua file terbaru.');if(request===nativeRequest)$('#online-state').textContent='Native 09-11c terhubung · mengambil stream…';return m.playVideo({videoId:id,title,artist:onlineCurrent?.artistName||'',album:onlineCurrent?.album||'',cover:onlineCurrent?.cover||'',queue:buildNativeQueue(id)})}),timeout]);
+    await Promise.race([nativeMusic().then(async m=>{const info=await m.diagnostics();if(info.nativeBuild!=='09-11e')throw new Error('Plugin Android masih versi lama. Build ulang APK dengan semua file terbaru.');if(request===nativeRequest)$('#online-state').textContent='Native 09-11e terhubung · mengambil stream…';return m.playVideo({videoId:id,title,artist:onlineCurrent?.artistName||'',album:onlineCurrent?.album||'',cover:onlineCurrent?.cover||'',queue:buildNativeQueue(id),mode:playQueue?.length?'sequential':'shuffle'})}),timeout]);
     if(request!==nativeRequest)return;
     nativeResolving=false;
     $('#np').hidden=false;positionMiniPlayer();

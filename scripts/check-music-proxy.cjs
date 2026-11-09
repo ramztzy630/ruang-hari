@@ -4,7 +4,7 @@ const start=source.indexOf('async function nativeMusic()');const end=source.inde
 let thenCalls=0;const calls=[];
 const plugin=new Proxy({}, {get:(_,name)=>(...args)=>{
  if(name==='then'){thenCalls++;return new Promise(()=>{})}
- calls.push({name,args});return Promise.resolve({ok:true,nativeBuild:'09-11c'});
+ calls.push({name,args});return Promise.resolve({ok:true,nativeBuild:'09-11e'});
 }});
 const context=vm.createContext({moduleResult:{music:plugin}});
 vm.runInContext(source.slice(start,end).replace("import('./native.js')","Promise.resolve(moduleResult)"),context);
