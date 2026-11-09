@@ -32,7 +32,7 @@ function renderHome(){const tasks=state.tasks.filter(t=>t.date===selectedDate).s
 return `<div class="top-grid"><section class="schedule"><div class="section-head"><h2>Rencana harian <span class="tiny">/ ${String(tasks.length).padStart(2,'0')}</span></h2><input class="date-picker" type="date" aria-label="Pilih tanggal jadwal" value="${selectedDate}" id="schedule-date"></div><div class="week">${week}</div><div class="timeline">${tasks.length?tasks.map(taskPill).join(''):`<div class="empty"><strong>Masih ada ruang.</strong>Belum ada tugas pada tanggal ini.<br><button class="text-btn" data-action="add-task">Buat rencana pertama ↗</button></div>`}</div></section><section class="panel summary"><div class="section-head"><h2>Langkah hari ini</h2><span class="tiny">↗</span></div><div class="progress-value">${pct}<span>%</span></div><p>${done} dari ${tasks.length} tugas selesai</p><svg class="sparkline" viewBox="0 0 180 80"><path stroke="#d3d8cb" d="M0 65Q25 5 55 40T110 30T180 30"/><path d="M0 65Q25 65 35 38T80 40T125 25T180 25"/></svg><div class="legend-row"><span><i class="dot"></i>Selesai</span><b>${String(done).padStart(2,'0')}</b></div><div class="legend-row"><span><i class="dot gray"></i>Dalam rencana</span><b>${String(tasks.length-done).padStart(2,'0')}</b></div><div class="legend-row"><span><i class="dot pale"></i>Catatan hari ini</span><b>${String(state.journals.filter(j=>j.date===selectedDate).length).padStart(2,'0')}</b></div></section>${musicCard()}</div><div class="lower-grid"><section class="panel"><div class="section-head"><h2>Sepotong cerita</h2><button class="icon-btn" data-action="add-journal" aria-label="Tulis jurnal">${ic('plus')}</button></div><div class="notes-list">${journals.length?journals.map(j=>`<button class="note-item" data-edit-journal="${esc(j.id)}">${ic('book')}<div><b>${esc(j.title)}</b><small>${dateText(j.date)} · ${esc(j.mood)}</small></div><span>↗</span></button>`).join(''):`<div class="empty" style="padding:15px 0">Apa hal baik yang terjadi hari ini?<br><button class="text-btn" data-action="add-journal">Tulis cerita pertamamu ↗</button></div>`}</div></section><section class="panel focus-panel"><div class="focus-top"><span>FOCUS MODE</span>${ic('headphones')}</div><div class="focus-body"><div><h2>Sedikit lebih fokus.</h2><p>25 menit untuk satu hal yang berarti.</p></div><div class="timer" id="timer">${timerText()}</div></div><div class="focus-bottom"><button class="primary" data-action="timer" id="timer-button">${timerEnd?'Jeda fokus':'Mulai fokus'} ${ic('arrow')}</button><button class="secondary" data-action="timer-reset" aria-label="Atur ulang timer">↺</button><small>ONE THING AT A TIME.</small></div></section></div>`}
 function renderTasks(){const tasks=state.tasks.filter(t=>(filter==='Semua'||(filter==='Selesai'?t.done:!t.done))&&t.title.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));return `<div class="filterbar"><input id="task-search" aria-label="Cari tugas" placeholder="Cari rencana…" value="${esc(search)}">${['Semua','Aktif','Selesai'].map(f=>`<button class="filter-chip ${f===filter?'active':''}" data-filter="${f}">${f}</button>`).join('')}</div><div class="task-list">${tasks.length?tasks.map(t=>`<article class="task-row ${t.done?'done':''}"><button class="check ${t.done?'checked':''}" data-toggle="${esc(t.id)}" aria-label="Tandai ${esc(t.title)}">${t.done?'✓':''}</button><div class="task-info"><b>${esc(t.title)}</b><small>${dateText(t.date)} · ${esc(t.time)}${t.remind?' · Pengingat aktif':''}</small></div><span class="tag">${esc(t.category)} · ${esc(t.priority)}</span><button class="icon-btn" data-edit-task="${esc(t.id)}" aria-label="Edit tugas">${ic('edit')}</button><button class="icon-btn danger" data-delete-task="${esc(t.id)}" aria-label="Hapus tugas">${ic('trash')}</button></article>`).join(''):`<div class="panel empty"><strong>${search?'Tidak ada hasil.':'Ruang untuk rencana baru.'}</strong>${search?'Coba kata lain.':'Tambahkan tugas pertamamu lewat tombol di atas.'}</div>`}</div>`}
 function renderJournals(){return `<div class="journal-grid">${state.journals.length?[...state.journals].sort((a,b)=>b.date.localeCompare(a.date)).map(j=>`<article class="panel journal-card"><div class="section-head" style="margin:0"><small>${dateText(j.date)}</small><span class="tag">${esc(j.mood)}</span></div><h3>${esc(j.title)}</h3><p>${esc(j.body)}</p><div class="journal-actions"><button class="text-btn" data-edit-journal="${esc(j.id)}">Baca & edit ↗</button><button class="text-btn danger" data-delete-journal="${esc(j.id)}">Hapus</button></div></article>`).join(''):`<div class="panel empty" style="grid-column:1/-1"><strong>Setiap hari punya cerita.</strong>Mulai dengan satu hal yang kamu syukuri hari ini.<br><button class="text-btn" data-action="add-journal">Tulis jurnal ↗</button></div>`}</div>`}
-function renderMusic(){return `<section class="panel online-music"><div class="section-head"><h2>Cari lagu online</h2></div><form id="online-search" class="online-search"><input name="query" required maxlength="160" placeholder="Judul lagu atau nama artis…" aria-label="Cari lagu online"><button class="primary" type="submit">Cari</button></form><p class="hint">Pencarian adaptasi Metrolist · Player YouTube · Memerlukan internet.</p><div id="online-status" role="status"></div><div id="online-results" class="playlist"></div><button class="text-btn" data-action="music-license">Lisensi & kredit musik</button></section><div class="music-layout">${musicCard()}<section class="panel"><div class="section-head"><h2>Koleksi personal <span class="tiny">/ ${tracks.length}</span></h2><button class="secondary" data-action="upload">${ic('plus')} Tambah lagu</button></div><div class="playlist">${tracks.length?tracks.map((t,i)=>`<div class="track-row ${i===trackIndex?'active':''}"><button class="icon-btn" data-track="${i}" aria-label="Putar ${esc(t.name)}">${ic(i===trackIndex&&!audio.paused?'pause':'play')}</button><div><b>${esc(t.name)}</b><small>Audio lokal · ${(t.blob.size/1048576).toFixed(1)} MB</small></div><button class="text-btn danger" data-delete-track="${i}" aria-label="Hapus lagu">${ic('trash')}</button></div>`).join(''):`<div class="empty"><strong>Ritme harimu dimulai di sini.</strong>Tambahkan MP3, M4A, OGG atau audio yang didukung perangkat.<br>Lagu disimpan pada perangkat ini, tidak diunggah ke server.</div>`}</div></section></div>`}
+function renderMusic(){return `<section class="panel online-music"><div class="section-head"><h2>Cari lagu online</h2></div><form id="online-search" class="online-search"><input name="query" required maxlength="160" placeholder="Judul lagu atau nama artis…" aria-label="Cari lagu online"><button class="primary" type="submit">Cari</button></form><p class="hint">Pencarian dan pemutar native adaptasi Metrolist di APK Android · Versi web memakai player YouTube · Memerlukan internet.</p><div id="online-status" role="status"></div><div id="online-results" class="playlist"></div><button class="text-btn" data-action="music-license">Lisensi & kredit musik</button></section><div class="music-layout">${musicCard()}<section class="panel"><div class="section-head"><h2>Koleksi personal <span class="tiny">/ ${tracks.length}</span></h2><button class="secondary" data-action="upload">${ic('plus')} Tambah lagu</button></div><div class="playlist">${tracks.length?tracks.map((t,i)=>`<div class="track-row ${i===trackIndex?'active':''}"><button class="icon-btn" data-track="${i}" aria-label="Putar ${esc(t.name)}">${ic(i===trackIndex&&!audio.paused?'pause':'play')}</button><div><b>${esc(t.name)}</b><small>Audio lokal · ${(t.blob.size/1048576).toFixed(1)} MB</small></div><button class="text-btn danger" data-delete-track="${i}" aria-label="Hapus lagu">${ic('trash')}</button></div>`).join(''):`<div class="empty"><strong>Ritme harimu dimulai di sini.</strong>Tambahkan MP3, M4A, OGG atau audio yang didukung perangkat.<br>Lagu disimpan pada perangkat ini, tidak diunggah ke server.</div>`}</div></section></div>`}
 function renderSettings(){return `<div class="settings"><section class="panel profile-card"><div class="section-head"><h2>Profil personal</h2><span class="status-pill">HANYA DI PERANGKATMU</span></div><div class="profile-overview"><span class="avatar avatar-large">${avatarHTML()}</span><div class="profile-copy"><h3>${esc(localProfile.name)}</h3><p>${esc(localProfile.bio||'Ruang kecil untuk harimu.')}</p></div><button class="secondary" data-action="edit-profile">${ic('edit')} Ubah profil</button></div></section><section class="panel"><div class="section-head"><h2>Pengingat</h2><span class="tiny">LOCAL NOTIFICATIONS</span></div><div class="setting-row"><div><h3>Jangan lewatkan rencanamu.</h3><p>APK Android memakai notifikasi lokal terjadwal.<br>Versi web memerlukan halaman terbuka dan izin notifikasi.</p></div><button class="secondary" data-action="notify">Aktifkan</button></div></section><section class="panel"><h2 style="font-size:14px;font-weight:500">Data & privasi</h2><div class="setting-row"><div><h3>Simpan salinan pribadi.</h3><p>Tugas, jurnal, dan profil tersimpan di localStorage.<br>Ekspor sebagai cadangan, lalu impor di perangkat lain.</p></div><button class="secondary" data-action="export">Ekspor data ↗</button></div><button class="text-btn" data-action="import">Impor cadangan JSON ↗</button><p class="hint">${storageOK?'Penyimpanan perangkat aktif.':'Penyimpanan perangkat tidak tersedia; ekspor data sebelum menutup.'} Musik disimpan di IndexedDB karena ukuran berkasnya lebih besar. Menghapus data browser/aplikasi juga menghapus data lokal. Tidak ada sinkronisasi cloud.</p></section><section class="panel motion-note"><p class="eyebrow">DESIGNED TO FEEL A LITTLE LIGHTER</p><h3>Gerakan kecil. Ritme yang tenang.</h3><p class="hint">Panel muncul lembut saat di-scroll dan halaman bertransisi saat berpindah tab. Animasi mengikuti pengaturan kurangi gerakan di perangkatmu.</p></section><section class="panel"><p class="eyebrow">RUANG HARI · VERSION 1.1</p><p class="hint">HTML, CSS, JavaScript. Tanpa akun atau server. Ruang personal yang selalu dekat denganmu.</p></section></div>`}
 function render(){profile();$$('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));$('#page-title').innerHTML=view==='home'&&localProfile.name!=='Ruang personal'?`Halo, ${esc(localProfile.name)}.<br><span>Ini ruang harimu.</span>`:titles[view][0];$('#page-subtitle').textContent=titles[view][1];$('#crumb').textContent=titles[view][2].toUpperCase();$('#nav-count').textContent=state.tasks.filter(t=>!t.done).length;$('#add-task').innerHTML=ic('plus')+(view==='journal'?' Tulis cerita':view==='music'?' Tambah lagu':' Tugas baru');$('#add-task').style.display=view==='settings'?'none':'';$('#content').innerHTML=({home:renderHome,tasks:renderTasks,journal:renderJournals,music:renderMusic,settings:renderSettings})[view]();paintIcons();observeReveals();}
 function openTask(id){const t=state.tasks.find(t=>t.id===id),f=$('#task-form');f.reset();f.elements.id.value=t?.id||'';for(const k of ['title','date','time','category','priority'])if(t)f.elements[k].value=t[k];if(!t){f.elements.date.value=selectedDate;let d=new Date(Date.now()+3600000);f.elements.time.value=d.toTimeString().slice(0,5)}f.elements.remind.checked=t?t.remind:true;$('#task-dialog-title').textContent=t?'Atur kembali rencanamu.':'Rencana kecil, hari baik.';$('#task-dialog').showModal();}
@@ -80,20 +80,75 @@ document.addEventListener('submit',async event=>{
     const bridge=await import('./native.js');
     const response=await bridge.music.search({query});
     if(request!==musicSearchRequest||!results.isConnected)return;
-    status.textContent=response.songs.length?'Pilih lagu untuk membuka player.':'Lagu tidak ditemukan. Coba kata kunci lain.';
+    status.textContent=response.songs.length?'Pilih lagu untuk memutar.':'Lagu tidak ditemukan. Coba kata kunci lain.';
     results.innerHTML=response.songs.map(song=>`<div class="track-row"><button class="icon-btn" data-online-song="${esc(song.id)}" data-online-title="${esc(song.title)}" aria-label="Putar ${esc(song.title)}">${ic('play')}</button><div><b>${esc(song.title)}</b><small>${esc(song.artist)}</small></div></div>`).join('');
   }catch(error){if(status.isConnected)status.textContent=error.message||'Pencarian gagal. Coba lagi.';}
 });
-document.addEventListener('click',event=>{
+let nativeSong=null,nativeTimer=null,nativeSeeking=false;
+const clock=ms=>{const s=Math.max(0,Math.floor((ms||0)/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+async function nativeMusic(){return (await import('./native.js')).music}
+function useIframe(id){
+  $('#online-native').hidden=true;$('#online-video').hidden=false;$('#online-iframe-hint').hidden=false;
+  $('#online-video').src='https://www.youtube.com/embed/'+encodeURIComponent(id)+'?playsinline=1&autoplay=1&origin='+encodeURIComponent(location.origin);
+}
+function renderNative(s){
+  const playing=!!s.playing,dur=s.durationMs>0?s.durationMs:0,seek=$('#online-seek');
+  $('#online-toggle').innerHTML=ic(playing?'pause':'play');
+  $('#np-toggle').innerHTML=ic(playing?'pause':'play');
+  seek.max=dur||1;if(!nativeSeeking)seek.value=Math.min(s.positionMs||0,dur||1);
+  const time=clock(s.positionMs)+(dur?' / '+clock(dur):'');
+  $('#online-time').textContent=time;$('#np-time').textContent=time;
+  $('#online-state').textContent=s.error||(s.state==='buffering'?'Memuat…':s.state==='ended'?'Selesai':playing?'Sedang diputar':'Dijeda');
+  $('#online-fallback-btn').hidden=!s.error;
+}
+async function pollNative(){if(!nativeSong)return;try{renderNative(await (await nativeMusic()).status())}catch{}}
+async function stopNative(){
+  clearInterval(nativeTimer);nativeTimer=null;nativeSong=null;$('#np').hidden=true;
+  try{await (await nativeMusic()).stop()}catch{}
+}
+document.addEventListener('click',async event=>{
   const button=event.target.closest('[data-online-song]');
   if(!button)return;
   const id=button.dataset.onlineSong;
   if(!/^[a-zA-Z0-9_-]{11}$/.test(id))return;
   audio.pause();
-  $('#online-song-title').textContent=button.dataset.onlineTitle;
-  $('#online-video').src='https://www.youtube.com/embed/'+encodeURIComponent(id)+'?playsinline=1&autoplay=1&origin='+encodeURIComponent(location.origin);
+  const title=button.dataset.onlineTitle||'Lagu';
+  $('#online-song-title').textContent=title;
   $('#online-watch').href='https://www.youtube.com/watch?v='+encodeURIComponent(id);
   $('#online-player-dialog').showModal();
+  if(!window.Capacitor?.isNativePlatform?.()){useIframe(id);return}
+  $('#online-video').hidden=true;$('#online-video').src='about:blank';$('#online-iframe-hint').hidden=true;
+  $('#online-native').hidden=false;$('#online-fallback-btn').hidden=true;
+  $('#online-state').textContent='Menyiapkan stream…';$('#online-time').textContent='0:00 / 0:00';$('#online-seek').value=0;
+  nativeSong={id,title};$('#np-title').textContent=title;
+  try{
+    await (await nativeMusic()).playVideo({videoId:id});
+    if(nativeSong?.id!==id)return;
+    $('#np').hidden=false;
+    clearInterval(nativeTimer);nativeTimer=setInterval(pollNative,1000);pollNative();
+  }catch(error){
+    if(nativeSong?.id!==id)return;
+    $('#online-state').textContent=error.message||'Lagu tidak bisa diputar.';
+    $('#online-fallback-btn').hidden=false;
+  }
 });
 $('#online-player-dialog').addEventListener('close',()=>{$('#online-video').src='about:blank';});
+$('#online-seek').addEventListener('input',()=>{nativeSeeking=true;$('#online-time').textContent=clock(+$('#online-seek').value)+' / '+clock(+$('#online-seek').max)});
+$('#online-seek').addEventListener('change',async()=>{
+  const position=+$('#online-seek').value;
+  try{await (await nativeMusic()).seek({positionMs:position})}catch{}
+  nativeSeeking=false;pollNative();
+});
+audio.addEventListener('play',async()=>{if(nativeSong){try{await (await nativeMusic()).pause()}catch{}}});
+async function toggleNative(){
+  if(!nativeSong)return;
+  const m=await nativeMusic(),s=await m.status();
+  if(s.playing)await m.pause();
+  else{if(s.state==='ended')await m.seek({positionMs:0});await m.resume()}
+  setTimeout(pollNative,150);
+}
 actions['music-license']=()=>$('#music-license-dialog').showModal();
+actions['online-toggle']=toggleNative;
+actions['np-toggle']=toggleNative;
+actions['np-stop']=stopNative;
+actions['online-fallback']=()=>{if(nativeSong)useIframe(nativeSong.id)};

@@ -65,18 +65,19 @@ Butuh Java 21 dan Android SDK:
 npm ci
 npm run android:init
 node scripts/android-resources.mjs
+node scripts/install-music-native.mjs
 cd android
 ./gradlew assembleDebug
 ```
 
-`android:init` untuk pertama kali; sesudahnya gunakan `npm run android:sync`, jalankan script resources lagi, lalu Gradle. Folder Android dibuat otomatis dan tidak dikomit.
+`android:init` untuk pertama kali; sesudahnya gunakan `npm run android:sync`, jalankan script resources lagi, **lalu `node scripts/install-music-native.mjs`**, kemudian Gradle (butuh JDK 21). Folder Android dibuat otomatis dan tidak dikomit.
 
 ## Pengingat, animasi, dan batasan
 
 - Android meminta izin notifikasi. Jadwal diserahkan ke OS sehingga dapat muncul saat UI tidak terbuka. Tanpa izin alarm tepat, Android bisa menunda pengingat. Kebijakan baterai/Doze/force-stop perangkat juga memengaruhi notifikasi. Ini pengingat harian, bukan alarm kritis.
 - Versi web memerlukan halaman terbuka dan izin notifikasi. Browser HP tertentu tidak mendukung notifikasi sistem dari halaman; pengingat di aplikasi tetap tersedia. Tidak ada push dari server ketika halaman ditutup.
 - Jadwal mengikuti waktu lokal perangkat. Timer di halaman memeriksa waktu sebenarnya setelah halaman kembali aktif; notifikasi fokus Android dijadwalkan ke OS.
-- Musik berasal dari file milik pengguna (maksimal 100 MB per lagu). Format tergantung dukungan perangkat; MP3 direkomendasikan. Tidak ada streaming Spotify/YouTube atau foreground media service untuk audio latar belakang jangka panjang.
+- Musik berasal dari file milik pengguna (maksimal 100 MB per lagu). Format tergantung dukungan perangkat; MP3 direkomendasikan. Pencarian dan pemutaran lagu online (YouTube Music via InnerTubeX/Metrolist) tersedia di APK Android; lihat `README-MUSIC-INTEGRATION.md`. Belum ada foreground media service untuk audio latar belakang jangka panjang.
 - Foto JPG/PNG/WebP maksimal 8 MB, diproses sepenuhnya di perangkat. Foto profil dapat dihapus atau diganti kapan saja.
 - localStorage memiliki kuota terbatas. Jika penyimpanan gagal, aplikasi menampilkan pesan dan tidak mengganti state tugas/jurnal yang berhasil disimpan sebelumnya. Ekspor cadangan secara berkala; menghapus data browser, mencopot aplikasi, atau memakai mode privat bisa menyebabkan kehilangan data lokal.
 - Animasi scroll hanya diterapkan pada panel di bawah layar dan dijalankan satu kali per render agar konten utama langsung terbaca. Tab berpindah dengan fade dan gerak pendek. Reduce Motion menonaktifkan efek gerak.
