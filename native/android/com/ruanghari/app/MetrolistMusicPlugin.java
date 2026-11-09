@@ -1,6 +1,10 @@
 package com.ruanghari.app;
 
 import com.getcapacitor.*;
+import androidx.media3.common.MediaItem;
+import androidx.media3.exoplayer.ExoPlayer;
+import android.os.Handler;
+import android.os.Looper;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import org.json.*;
 import java.net.*;
@@ -14,7 +18,32 @@ import java.util.concurrent.*;
  */
 @CapacitorPlugin(name = "MetrolistMusic")
 public class MetrolistMusicPlugin extends Plugin {
+    private ExoPlayer player;
+    private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    @PluginMethod public void playUrl(PluginCall call) {
+        String url = call.getString("url", "");
+        if (!url.startsWith("https://")) { call.reject("URL HTTPS diperlukan"); return; }
+        handler.post(() -> { try {
+            if (player == null) player = new ExoPlayer.Builder(getContext()).build();
+            player.setMediaItem(MediaItem.fromUri(url)); player.prepare(); player.play(); call.resolve();
+        } catch(Exception e) { call.reject(e.getMessage()); } });
+    }
+    @PluginMethod public void pause(PluginCall call) { handler.post(() -> { if(player != null) player.pause(); call.resolve(); }); }
+    @PluginMethod public void resume(PluginCall call) { handler.post(() -> { if(player != null) player.play(); call.resolve(); }); }
+    @PluginMethod public void stop(PluginCall call) { handler.post(() -> { if(player != null) player.stop(); call.resolve(); }); }
+    @PluginMethod public void seek(PluginCall call) {
+        Long position = call.getLong("positionMs");
+        if(position == null || position < 0) { call.reject("Posisi tidak valid"); return; }
+        handler.post(() -> { if(player != null) player.seekTo(position); call.resolve(); });
+    }
+    @PluginMethod public void status(PluginCall call) { handler.post(() -> {
+        JSObject result = new JSObject();
+        result.put("playing",player != null && player.isPlaying());
+        result.put("positionMs",player == null ? 0 : player.getCurrentPosition());
+        result.put("durationMs",player == null ? 0 : player.getDuration());
+        call.resolve(result);
+    }); }
     @PluginMethod public void search(PluginCall call) {
         String query = call.getString("query", "").trim();
         if (query.isEmpty() || query.length() > 160) { call.reject("Masukkan judul lagu atau artis (maksimal 160 karakter)."); return; }
@@ -72,5 +101,5 @@ public class MetrolistMusicPlugin extends Plugin {
         if(runs!=null) for(int i=0;i<runs.length();i++) { JSONObject run=runs.optJSONObject(i); if(run!=null) value.append(run.optString("text")); }
         return value.toString();
     }
-    @Override protected void handleOnDestroy() { executor.shutdownNow(); }
+    @Override protected void handleOnDestroy() { executor.shutdownNow(); handler.post(() -> { if(player != null) { player.release(); player = null; } }); }
 }

@@ -13,3 +13,16 @@ public class MainActivity extends BridgeActivity {
 }
 `);
 console.log('Metrolist search bridge installed.');
+
+const gradle='android/app/build.gradle';
+let config=await readFile(gradle,'utf8');
+if(!config.includes('androidx.media3:media3-exoplayer:')) {
+  config += `
+// Native Media3 audio engine
+dependencies {
+    implementation 'androidx.media3:media3-exoplayer:1.5.1'
+}
+`;
+  await writeFile(gradle,config);
+}
+console.log('Media3 player dependency installed.');
