@@ -27,6 +27,7 @@ import kotlinx.coroutines.Job
 import android.util.Log
 import android.net.Uri
 import com.getcapacitor.JSObject
+import org.json.JSONArray
 
 /**
  * Mesin pemutar native (Media3 ExoPlayer) untuk Ruang Hari.
@@ -57,6 +58,30 @@ class MusicEngine(context: Context) {
     private val main = Handler(Looper.getMainLooper())
     private val streams = ConcurrentHashMap<String, ResolvedStream>()
     private val displayMetadata = ConcurrentHashMap<String, MediaMetadata>()
+    private data class QueueTrack(val id: String, val title: String, val artist: String, val album: String, val cover: String)
+    @Volatile private var shuffleQueue: List<QueueTrack> = emptyList()
+    private var autoplayPending = false
+    fun setQueue(items: JSONArray) {
+        shuffleQueue = (0 until minOf(items.length(), 40)).mapNotNull { index ->
+            val item = items.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optString("id")
+            if (!id.matches(Regex("[A-Za-z0-9_-]{11}"))) return@mapNotNull null
+            QueueTrack(id, item.optString("title"), item.optString("artistName"), item.optString("album"), item.optString("cover"))
+        }.distinctBy { it.id }
+    }
+    private fun shuffleNext() {
+        if (autoplayPending) return
+        val queue = shuffleQueue
+        val index = ShufflePolicy.pickIndex(queue.map { it.id }, currentVideoId.orEmpty())
+        if (index < 0) return
+        val next = queue[index]
+        autoplayPending = true
+        setDisplayMetadata(next.id, next.title, next.artist, next.album, next.cover)
+        playVideo(next.id, object : StartCallback {
+            override fun onStarted(clientName: String, mimeType: String, bitrate: Long) { autoplayPending = false }
+            override fun onError(message: String) { autoplayPending = false }
+        })
+    }
     fun setDisplayMetadata(id: String, title: String, artist: String, album: String, cover: String) {
         val builder = MediaMetadata.Builder().setTitle(title).setArtist(artist).setAlbumTitle(album)
         if (cover.startsWith("https://")) builder.setArtworkUri(Uri.parse(cover))
@@ -66,7 +91,7 @@ class MusicEngine(context: Context) {
     // Called on the main thread by status()'s callback.
     fun metadataSnapshot(): JSObject {
         val item = player?.currentMediaItem
-        val info = item?.mediaMetadata
+        val info = currentVideoId?.let { displayMetadata[it] } ?: item?.takeIf { it.mediaId == currentVideoId }?.mediaMetadata
         return JSObject().apply {
             put("title", info?.title?.toString().orEmpty())
             put("artistName", info?.artist?.toString().orEmpty())
@@ -143,6 +168,8 @@ class MusicEngine(context: Context) {
             currentVideoId = null
             lastError = null
             phase = "idle"
+            autoplayPending = false
+            shuffleQueue = emptyList()
         }
     }
 
@@ -274,6 +301,7 @@ class MusicEngine(context: Context) {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_BUFFERING) armDeadline()
                     else clearDeadline()
+                    if (playbackState == Player.STATE_ENDED && built.playWhenReady) shuffleNext()
                 }
                 override fun onPlayerError(error: PlaybackException) {
                     handleError(error)

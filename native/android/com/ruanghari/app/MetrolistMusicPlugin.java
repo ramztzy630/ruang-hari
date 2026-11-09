@@ -72,6 +72,7 @@ public class MetrolistMusicPlugin extends Plugin {
         playbackExecutor.execute(() -> {
             try {
                 MusicEngine current = engine();
+                current.setQueue(call.getArray("queue", new JSArray()));
                 current.setDisplayMetadata(id, call.getString("title", ""), call.getString("artist", ""), call.getString("album", ""), call.getString("cover", ""));
                 current.playVideo(id, new MusicEngine.StartCallback() {
                     @Override public void onStarted(String clientName, String mimeType, long bitrate) {
@@ -199,13 +200,29 @@ public class MetrolistMusicPlugin extends Plugin {
                         JSONObject renderer=thumb==null?null:thumb.optJSONObject("musicThumbnailRenderer");
                         JSONObject image=renderer==null?null:renderer.optJSONObject("thumbnail");
                         JSONArray thumbnails=image==null?null:image.optJSONArray("thumbnails");
-                        if(thumbnails!=null&&thumbnails.length()>0){JSONObject last=thumbnails.optJSONObject(thumbnails.length()-1);if(last!=null)cover=last.optString("url", "");}
-                        song.put("cover",cover.startsWith("https://")?cover:"");songs.put(song);
+                        long largest = -1;
+                        if(thumbnails!=null)for(int t=0;t<thumbnails.length();t++){
+                            JSONObject imageData=thumbnails.optJSONObject(t);if(imageData==null)continue;
+                            long area=(long)imageData.optInt("width",0)*imageData.optInt("height",0);
+                            String candidate=imageData.optString("url", "");
+                            if(candidate.startsWith("https://")&&area>=largest){cover=candidate;largest=area;}
+                        }
+                        song.put("coverFallback",cover);song.put("cover",hdCover(cover));songs.put(song);
                     }
                 }
             }
             Iterator<String> keys=object.keys(); while(keys.hasNext()) collect(object.opt(keys.next()),songs,seen);
         } else if(node instanceof JSONArray) { JSONArray items=(JSONArray)node; for(int i=0;i<items.length();i++) collect(items.opt(i),songs,seen); }
+    }
+    private String hdCover(String cover) {
+        try {
+            URI uri=URI.create(cover);String host=uri.getHost();
+            if(!"https".equals(uri.getScheme())||host==null)return "";
+            if(host.endsWith(".googleusercontent.com")||host.endsWith(".ggpht.com")){
+                cover=cover.replaceAll("([=-])w[0-9]+", "$1w600").replaceAll("([=-])h[0-9]+", "$1h600").replaceAll("([=-])s[0-9]+", "$1s600");
+            }
+            return cover;
+        }catch(Exception error){return "";}
     }
     private String column(JSONArray columns, int index) {
         if(columns==null) return "";
