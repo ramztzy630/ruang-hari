@@ -88,3 +88,37 @@ for (const permission of ['android.permission.ACCESS_NETWORK_STATE', 'android.pe
 await writeFile(manifestPath, manifest);
 
 console.log('Gradle (Kotlin, JitPack, InnerTubeX, Ktor, Media3), minSdk 26, dan izin manifest siap.');
+
+const fs = await import('node:fs/promises');
+
+const variables = 'android/variables.gradle';
+let text = await fs.readFile(variables, 'utf8');
+
+text = text.replace(
+  /compileSdkVersion\s*=\s*\d+/,
+  'compileSdkVersion = 37'
+);
+
+await fs.writeFile(variables, text);
+
+const build = 'android/build.gradle';
+let gradle = await fs.readFile(build, 'utf8');
+
+gradle = gradle.replace(
+  /com\.android\.tools\.build:gradle:[\d.]+/,
+  'com.android.tools.build:gradle:8.13.2'
+);
+
+await fs.writeFile(build, gradle);
+
+const wrapper =
+  'android/gradle/wrapper/gradle-wrapper.properties';
+
+let properties = await fs.readFile(wrapper, 'utf8');
+
+properties = properties.replace(
+  /gradle-[\d.]+-(all|bin)\.zip/,
+  'gradle-8.13-bin.zip'
+);
+
+await fs.writeFile(wrapper, properties);
