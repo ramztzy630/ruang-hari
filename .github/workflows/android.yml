@@ -32,22 +32,22 @@ jobs:
           "$JAVA_HOME_21_X64/bin/java" -version
 
       
+
       - name: Install Android SDK 37
         shell: bash
         run: |
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 
-          if [ ! -f "$SDKMANAGER" ]; then
-            echo "Android SDK Manager tidak ditemukan"
-            exit 1
+          "$SDKMANAGER" --channel=3 \
+            "platforms;android-37.0" \
+            "build-tools;36.0.0" \
+            "platform-tools"
+
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ]; then
+            ln -sfn android-37.0 \
+              "$ANDROID_HOME/platforms/android-37"
           fi
 
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-
-          "$SDKMANAGER" \
-            "platforms;android-37" \
-            "build-tools;35.0.0" \
-            "platform-tools"
 
 
       - name: Install dependencies
