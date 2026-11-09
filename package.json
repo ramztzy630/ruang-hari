@@ -22,5 +22,6 @@
     "@capacitor/android": "^7.4.0",
     "@capacitor/cli": "^7.4.0",
     "esbuild": "^0.25.0"
-  }
+  },
+  "license": "GPL-3.0-only"
 }
