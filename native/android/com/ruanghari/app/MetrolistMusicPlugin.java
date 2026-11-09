@@ -28,17 +28,41 @@ public class MetrolistMusicPlugin extends Plugin {
     @PluginMethod public void playVideo(PluginCall call) {
         String id = call.getString("videoId", "");
         if (id == null || !id.matches("[A-Za-z0-9_-]{11}")) { call.reject("ID lagu tidak valid"); return; }
-        engine().playVideo(id, new MusicEngine.StartCallback() {
-            @Override public void onStarted(String clientName, String mimeType, long bitrate) {
-                JSObject result = new JSObject();
-                result.put("client", clientName);
-                result.put("mimeType", mimeType);
-                result.put("bitrate", bitrate);
-                call.resolve(result);
+        // Keep Capacitor's plugin thread available for status/stop, even during class loading.
+        executor.execute(() -> {
+            try {
+                engine().playVideo(id, new MusicEngine.StartCallback() {
+                    @Override public void onStarted(String clientName, String mimeType, long bitrate) {
+                        JSObject result = new JSObject();
+                        result.put("client", clientName); result.put("mimeType", mimeType); result.put("bitrate", bitrate);
+                        call.resolve(result);
+                    }
+                    @Override public void onError(String message) { call.reject(message); }
+                });
+            } catch (Throwable error) {
+                android.util.Log.e("RuangStream", "Native music initialization failed", error);
+                call.reject(describe(error));
             }
-            @Override public void onError(String message) { call.reject(message); }
         });
     }
+
+    private String describe(Throwable error) {
+        StringBuilder detail = new StringBuilder("Native 09-11c: ");
+        Throwable current = error;
+        for (int depth = 0; current != null && depth < 4; depth++, current = current.getCause()) {
+            if (depth > 0) detail.append(" → ");
+            detail.append(current.getClass().getSimpleName()).append(": ").append(current.getMessage());
+        }
+        return detail.toString();
+    }
+
+    @PluginMethod public void diagnostics(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("nativeBuild", "09-11c");
+        result.put("androidApi", android.os.Build.VERSION.SDK_INT);
+        call.resolve(result);
+    }
+
     @PluginMethod public void playUrl(PluginCall call) {
         String url = call.getString("url", "");
         if (url == null || !url.startsWith("https://")) { call.reject("URL HTTPS diperlukan"); return; }
@@ -53,7 +77,7 @@ public class MetrolistMusicPlugin extends Plugin {
         engine().seek(position); call.resolve();
     }
     @PluginMethod public void status(PluginCall call) {
-        engine().status(new MusicEngine.StatusCallback() {
+        try { engine().status(new MusicEngine.StatusCallback() {
             @Override public void onStatus(boolean playing, long positionMs, long durationMs, String state, String videoId, String error) {
                 JSObject result = new JSObject();
                 result.put("playing", playing);
@@ -64,7 +88,7 @@ public class MetrolistMusicPlugin extends Plugin {
                 result.put("error", error == null ? "" : error);
                 call.resolve(result);
             }
-        });
+        }); } catch (Throwable error) { call.reject(describe(error)); }
     }
     @PluginMethod public void search(PluginCall call) {
         String query = call.getString("query", "").trim();

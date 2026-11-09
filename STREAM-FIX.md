@@ -1,9 +1,9 @@
-# Stream loading repair — 9 November 2026
+# Native bridge error handling — 09-11c
 
-Verified by source inspection: JS polling was disabled while playVideo waited. Network calls allowed 60-second reads, no OkHttp call deadline and no Ktor HttpTimeout. Player buffering had no independent deadline. These defects can hide failure stages; they do not by themselves prove why YouTube rejected or delayed a particular device request.
+Fix confirmed in source: JS catch awaited native stop before showing the error. A nonresponsive native stop could therefore hide the resolver deadline indefinitely. Error display now happens before fire-and-forget cleanup. Module import and playback are both inside the deadline race; status polling has its own timeout.
 
-Changes: live resolving/token/extracting/buffering status, 30-second independent resolver deadline with single terminal callback, canceled previous resolver on stop/new track, bounded per-request Ktor/OkHttp IO, short BotGuard deadlines, 20-second audio-buffer deadline and player error detail in UI/Logcat. No new external resolver server or API key is required.
+Java playVideo initialization is moved off the shared Capacitor plugin thread. Throwable during initialization (including missing runtime classes and initializer errors) is logged and returned to JS instead of leaving a call unresolved. A diagnostics method identifies the native plugin revision, detecting stale native code in a rebuilt UI.
 
-Install: upload all extracted files at repository root, preserving existing app data. Use included workflow, build and update installed APK. Native playback needs device verification; successful Actions compilation alone does not prove runtime playback.
+Tests executed: JS syntax; VM simulation confirms timeout text is visible when playVideo, status and stop never resolve; native initialization rejection text is visible. Android compilation and real YouTube playback were not verified in this environment. No claim that a timeout fix alone repairs upstream stream availability.
 
-If playback fails, record the complete message now displayed below the song title. Android Logcat tag RuangStream contains detailed causes. No logs, cookies or tokens are transmitted to a diagnostic server.
+Upload the entire extracted contents to repository root, including .github, native and scripts. Run the included Actions workflow and update the installed APK. The player must show Native 09-11c connected or an explicit mismatch/error. Capture the exact displayed error if extraction fails.

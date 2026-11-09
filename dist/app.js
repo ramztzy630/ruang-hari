@@ -106,14 +106,15 @@ function renderNative(s){
 async function pollNative(){
   if(!nativeSong||nativeStatusBusy)return;
   nativeStatusBusy=true;const request=nativeRequest;
-  try{const state=await (await nativeMusic()).status();if(request===nativeRequest)renderNative(state)}
-  catch(error){console.warn('Music status:',error)}finally{nativeStatusBusy=false}
+  let statusTimeout;
+  try{const state=await Promise.race([nativeMusic().then(m=>m.status()),new Promise((_,reject)=>{statusTimeout=setTimeout(()=>reject(new Error('Status native belum merespons')),3000)})]);if(request===nativeRequest)renderNative(state)}
+  catch(error){console.warn('Music status:',error)}finally{clearTimeout(statusTimeout);nativeStatusBusy=false}
 }
 let nativeResolving=false,nativeRequest=0,nativeStatusBusy=false;
 async function stopNative(){
   ++nativeRequest;nativeResolving=false;
   clearInterval(nativeTimer);nativeTimer=null;nativeSong=null;$('#np').hidden=true;
-  try{await (await nativeMusic()).stop()}catch{}
+  void nativeMusic().then(m=>m.stop()).catch(()=>{});
 }
 document.addEventListener('click',async event=>{
   const button=event.target.closest('[data-online-song]');
@@ -128,13 +129,13 @@ document.addEventListener('click',async event=>{
   if(!window.Capacitor?.isNativePlatform?.()){useIframe(id);return}
   $('#online-video').hidden=true;$('#online-video').src='about:blank';$('#online-iframe-hint').hidden=true;
   $('#online-native').hidden=false;$('#online-fallback-btn').hidden=true;
-  $('#online-state').textContent='Menyiapkan stream · perbaikan 09-11b…';$('#online-time').textContent='0:00 / 0:00';$('#online-seek').value=0;
+  $('#online-state').textContent='Menyiapkan stream · perbaikan 09-11c…';$('#online-time').textContent='0:00 / 0:00';$('#online-seek').value=0;
   const request=++nativeRequest;nativeSong={id,title};nativeResolving=true;$('#np-title').textContent=title;$('#np').hidden=false;
   clearInterval(nativeTimer);nativeTimer=setInterval(pollNative,1000);
   let timeoutId;
   const timeout=new Promise((_,reject)=>{timeoutId=setTimeout(()=>reject(new Error('Tidak ada jawaban dari plugin musik dalam 35 detik. Stream dihentikan.')),35000)});
   try{
-    await Promise.race([(await nativeMusic()).playVideo({videoId:id}),timeout]);
+    await Promise.race([nativeMusic().then(async m=>{const info=await m.diagnostics();if(info.nativeBuild!=='09-11c')throw new Error('Plugin Android masih versi lama. Build ulang APK dengan semua file terbaru.');if(request===nativeRequest)$('#online-state').textContent='Native 09-11c terhubung · mengambil stream…';return m.playVideo({videoId:id})}),timeout]);
     if(request!==nativeRequest)return;
     nativeResolving=false;
     $('#np').hidden=false;
@@ -143,8 +144,9 @@ document.addEventListener('click',async event=>{
     if(request!==nativeRequest)return;
     nativeResolving=false;
     clearInterval(nativeTimer);nativeTimer=null;
-    try{await (await nativeMusic()).stop()}catch{}
     $('#online-state').textContent=error.message||'Lagu tidak bisa diputar.';
+    // Cleanup must never delay the visible error: the native bridge may be unresponsive.
+    void nativeMusic().then(m=>m.stop()).catch(()=>{});
     $('#online-fallback-btn').hidden=false;
   }finally{clearTimeout(timeoutId)}
 });
