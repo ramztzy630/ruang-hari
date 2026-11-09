@@ -14,3 +14,6 @@ Native playback (added November 9, 2026): files under native/android/com/ruangha
 The build fetches the InnerTubeX library (com.github.MetrolistGroup.innertubex:innertubex, v0.11.2) from JitPack; see its repository for its own license and notices. Other dependencies: Ktor, OkHttp, kotlinx.coroutines, Timber, AndroidX Media3 (Apache-2.0).
 
 On Android, online playback uses the InnerTubeX stream resolver and the Media3 engine described above. The visible YouTube embedded player remains as a fallback and is the only online playback path in the web version. No background service, account login or downloads are implemented. Music availability depends on YouTube and the rights holder. Local music remains available through the existing player.
+
+
+Lyrics provider: LRCLIB (https://lrclib.net). Provider requests follow Metrolist app/src/main/kotlin/com/metrolist/lrclib/LrcLib.kt. Ruang Hari adds timed LRC parsing and per-track matching. Lyrics availability is external; no lyrics are bundled in the source archive. Album artwork and album/artist metadata are read from the selected YouTube Music search result.

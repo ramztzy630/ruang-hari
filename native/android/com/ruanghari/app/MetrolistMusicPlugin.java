@@ -19,6 +19,8 @@ public class MetrolistMusicPlugin extends Plugin {
     private MusicEngine engine;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
+    private final ExecutorService metadataExecutor = Executors.newFixedThreadPool(2);
+
     private synchronized MusicEngine engine() {
         if (engine == null) engine = new MusicEngine(getContext().getApplicationContext());
         return engine;
@@ -90,6 +92,16 @@ public class MetrolistMusicPlugin extends Plugin {
             }
         }); } catch (Throwable error) { call.reject(describe(error)); }
     }
+    @PluginMethod public void lyrics(PluginCall call) {
+        String title=call.getString("title", "").trim(), artist=call.getString("artist", "").trim();
+        String album=call.getString("album", "").trim();
+        Double duration=call.getDouble("duration", 0.0);
+        if(title.isEmpty()||artist.isEmpty()||title.length()>200||artist.length()>200||album.length()>200){call.reject("Metadata lagu belum lengkap untuk mencari lirik.");return;}
+        metadataExecutor.execute(()->{
+            try{call.resolve(LyricsClient.fetch(title,artist,album,duration));}
+            catch(Exception error){call.reject("Lirik belum dapat dimuat: "+error.getMessage());}
+        });
+    }
     @PluginMethod public void search(PluginCall call) {
         String query = call.getString("query", "").trim();
         if (query.isEmpty() || query.length() > 160) { call.reject("Masukkan judul lagu atau artis (maksimal 160 karakter)."); return; }
@@ -131,7 +143,19 @@ public class MetrolistMusicPlugin extends Plugin {
                 if (id.matches("[A-Za-z0-9_-]{11}") && seen.add(id)) {
                     JSONArray columns = item.optJSONArray("flexColumns");
                     String title = column(columns, 0), subtitle = column(columns, 1);
-                    if (!title.isEmpty()) songs.put(new JSObject().put("id", id).put("title", title).put("artist", subtitle));
+                    if (!title.isEmpty()) {
+                        JSObject song=new JSObject();song.put("id",id);song.put("title",title);song.put("artist",subtitle);
+                        String[] parts=subtitle.split("[•·]");
+                        song.put("artistName",parts.length>0?parts[0].trim():"");
+                        song.put("album",parts.length>2?parts[1].trim():"");
+                        String cover="";
+                        JSONObject thumb=item.optJSONObject("thumbnail");
+                        JSONObject renderer=thumb==null?null:thumb.optJSONObject("musicThumbnailRenderer");
+                        JSONObject image=renderer==null?null:renderer.optJSONObject("thumbnail");
+                        JSONArray thumbnails=image==null?null:image.optJSONArray("thumbnails");
+                        if(thumbnails!=null&&thumbnails.length()>0){JSONObject last=thumbnails.optJSONObject(thumbnails.length()-1);if(last!=null)cover=last.optString("url", "");}
+                        song.put("cover",cover.startsWith("https://")?cover:"");songs.put(song);
+                    }
                 }
             }
             Iterator<String> keys=object.keys(); while(keys.hasNext()) collect(object.opt(keys.next()),songs,seen);
@@ -147,5 +171,5 @@ public class MetrolistMusicPlugin extends Plugin {
         if(runs!=null) for(int i=0;i<runs.length();i++) { JSONObject run=runs.optJSONObject(i); if(run!=null) value.append(run.optString("text")); }
         return value.toString();
     }
-    @Override protected void handleOnDestroy() { executor.shutdownNow(); if (engine != null) engine.release(); }
+    @Override protected void handleOnDestroy() { executor.shutdownNow(); metadataExecutor.shutdownNow(); if (engine != null) engine.release(); }
 }

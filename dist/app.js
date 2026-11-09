@@ -17,6 +17,7 @@ let draftPhoto='',revealObserver=null,viewAnimation=null;
 let view='home',selectedDate=today,filter='Semua',search='',inbox=read('rh.inbox',[]),notified=read('rh.notified',{});
 let timerLeft=25*60,timerEnd=null,timerInterval=null,tracks=[],trackIndex=0,db=null,native=null;
 const audio=$('#audio'); let lastSeek=0;
+let onlineCurrent=null,onlineState={},onlineLyrics={state:'idle',lines:[],plain:''},onlineSongs=new Map(),lyricsSequence=0,lyricsController=null,lyricsTrackKey='';
 function toast(msg){$('#toast').textContent=msg;$('#toast').classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>$('#toast').classList.remove('show'),3800)}
 function recordNotification(title){inbox.unshift({title,date:new Date().toISOString()});inbox=inbox.slice(0,40);write('rh.inbox',inbox);$('#bell-dot').style.display='block';}
 async function commit(next){if(!write('rh.local',next))return false;state=next;return true;}
@@ -26,7 +27,7 @@ function profile(){ $('#user-name').textContent=localProfile.name;$('#mode-label
 function setView(v){if(!titles[v]||v===view)return;view=v;render();window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});if(!matchMedia('(prefers-reduced-motion: reduce)').matches){viewAnimation?.cancel();viewAnimation=$('main').animate([{opacity:.35,transform:'translateY(14px)'},{opacity:1,transform:'translateY(0)'}],{duration:380,easing:'cubic-bezier(.2,.7,.2,1)'});}}
 function observeReveals(){revealObserver?.disconnect();if(!('IntersectionObserver'in window)||matchMedia('(prefers-reduced-motion: reduce)').matches)return;revealObserver=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){entry.target.classList.add('revealed');revealObserver.unobserve(entry.target)}},{threshold:.08});$$('#content .panel, #content .schedule, #content .task-row').forEach((el,i)=>{if(el.getBoundingClientRect().top>=innerHeight-24){el.classList.add('scroll-reveal');el.style.setProperty('--reveal-delay',`${Math.min(i%3*65,130)}ms`);revealObserver.observe(el)}});}
 const titles={home:['Hari ini,<br><span>lebih terarah.</span>','Ruang untuk rencana, cerita, dan jeda kecilmu.','Ringkasan'],tasks:['Satu tugas,<br><span>satu langkah.</span>','Beri tempat untuk hal-hal yang penting.','Tugas saya'],journal:['Cerita kecil,<br><span>berarti besar.</span>','Simpan apa yang kamu rasakan hari ini.','Jurnal harian'],music:['Ambil jeda.<br><span>Putar suasana.</span>','Lagu milikmu, untuk ritme harimu sendiri.','Musik'],settings:['Ruangmu,<br><span>caramu.</span>','Atur hal kecil untuk pengalaman yang nyaman.','Pengaturan']};
-function musicCard(){const track=tracks[trackIndex];return `<section class="panel music-card ${audio.paused?'':'playing'}"><div class="section-head"><h2>Sound of the day</h2><button class="text-btn" data-action="upload" aria-label="Tambah musik">${ic('plus')}</button></div><div class="vinyl-wrap"><div class="vinyl"></div></div><h3 class="song-name">${track?esc(track.name):'A little pause'}</h3><p class="song-artist">${track?'KOLEKSI PERSONAL':'Pilih lagu dari perangkatmu'}</p><input class="seek" aria-label="Posisi lagu" type="range" min="0" max="100" value="${lastSeek}" ${track?'':'disabled'}><div class="player-controls"><button data-action="previous" aria-label="Lagu sebelumnya">${ic('prev')}</button><button class="play" data-action="play" aria-label="${audio.paused?'Putar':'Jeda'}">${ic(audio.paused?'play':'pause')}</button><button data-action="next" aria-label="Lagu berikutnya">${ic('next')}</button><button data-action="upload" aria-label="Tambahkan lagu">${ic('upload')}</button></div></section>`}
+function musicCard(){if(onlineCurrent)return onlineMusicCard();const track=tracks[trackIndex];return `<section data-music-card class="panel music-card ${audio.paused?'':'playing'}"><div class="section-head"><h2>Sound of the day</h2><button class="text-btn" data-action="upload" aria-label="Tambah musik">${ic('plus')}</button></div><div class="vinyl-wrap"><div class="vinyl"></div></div><h3 class="song-name">${track?esc(track.name):'A little pause'}</h3><p class="song-artist">${track?'KOLEKSI PERSONAL':'Pilih lagu dari perangkatmu'}</p><input class="seek" aria-label="Posisi lagu" type="range" min="0" max="100" value="${lastSeek}" ${track?'':'disabled'}><div class="player-controls"><button data-action="previous" aria-label="Lagu sebelumnya">${ic('prev')}</button><button class="play" data-action="play" aria-label="${audio.paused?'Putar':'Jeda'}">${ic(audio.paused?'play':'pause')}</button><button data-action="next" aria-label="Lagu berikutnya">${ic('next')}</button><button data-action="upload" aria-label="Tambahkan lagu">${ic('upload')}</button></div></section>`}
 function taskPill(t){return `<div class="timeline-row"><span class="time">${esc(t.time)}</span><div class="task-pill ${t.category==='Personal'?'light':''} ${t.done?'done':''}"><button class="check ${t.done?'checked':''}" data-toggle="${esc(t.id)}" aria-label="${t.done?'Batalkan selesai':'Selesaikan'} ${esc(t.title)}">${t.done?'✓':''}</button><span class="title">${esc(t.title)}</span><button class="text-btn" data-edit-task="${esc(t.id)}" aria-label="Edit ${esc(t.title)}" style="color:inherit">↗</button></div></div>`}
 function renderHome(){const tasks=state.tasks.filter(t=>t.date===selectedDate).sort((a,b)=>a.time.localeCompare(b.time)),done=tasks.filter(t=>t.done).length,pct=tasks.length?Math.round(done/tasks.length*100):0;const start=new Date(selectedDate+'T12:00:00');start.setDate(start.getDate()-((start.getDay()+6)%7));let week='';for(let i=0;i<7;i++){let d=new Date(start);d.setDate(start.getDate()+i);let str=localDate(d);week+=`<button class="day ${str===selectedDate?'active':''}" data-date="${str}"><span>${['MIN','SEN','SEL','RAB','KAM','JUM','SAB'][d.getDay()]}</span><b>${d.getDate()}</b></button>`}const journals=[...state.journals].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3);
 return `<div class="top-grid"><section class="schedule"><div class="section-head"><h2>Rencana harian <span class="tiny">/ ${String(tasks.length).padStart(2,'0')}</span></h2><input class="date-picker" type="date" aria-label="Pilih tanggal jadwal" value="${selectedDate}" id="schedule-date"></div><div class="week">${week}</div><div class="timeline">${tasks.length?tasks.map(taskPill).join(''):`<div class="empty"><strong>Masih ada ruang.</strong>Belum ada tugas pada tanggal ini.<br><button class="text-btn" data-action="add-task">Buat rencana pertama ↗</button></div>`}</div></section><section class="panel summary"><div class="section-head"><h2>Langkah hari ini</h2><span class="tiny">↗</span></div><div class="progress-value">${pct}<span>%</span></div><p>${done} dari ${tasks.length} tugas selesai</p><svg class="sparkline" viewBox="0 0 180 80"><path stroke="#d3d8cb" d="M0 65Q25 5 55 40T110 30T180 30"/><path d="M0 65Q25 65 35 38T80 40T125 25T180 25"/></svg><div class="legend-row"><span><i class="dot"></i>Selesai</span><b>${String(done).padStart(2,'0')}</b></div><div class="legend-row"><span><i class="dot gray"></i>Dalam rencana</span><b>${String(tasks.length-done).padStart(2,'0')}</b></div><div class="legend-row"><span><i class="dot pale"></i>Catatan hari ini</span><b>${String(state.journals.filter(j=>j.date===selectedDate).length).padStart(2,'0')}</b></div></section>${musicCard()}</div><div class="lower-grid"><section class="panel"><div class="section-head"><h2>Sepotong cerita</h2><button class="icon-btn" data-action="add-journal" aria-label="Tulis jurnal">${ic('plus')}</button></div><div class="notes-list">${journals.length?journals.map(j=>`<button class="note-item" data-edit-journal="${esc(j.id)}">${ic('book')}<div><b>${esc(j.title)}</b><small>${dateText(j.date)} · ${esc(j.mood)}</small></div><span>↗</span></button>`).join(''):`<div class="empty" style="padding:15px 0">Apa hal baik yang terjadi hari ini?<br><button class="text-btn" data-action="add-journal">Tulis cerita pertamamu ↗</button></div>`}</div></section><section class="panel focus-panel"><div class="focus-top"><span>FOCUS MODE</span>${ic('headphones')}</div><div class="focus-body"><div><h2>Sedikit lebih fokus.</h2><p>25 menit untuk satu hal yang berarti.</p></div><div class="timer" id="timer">${timerText()}</div></div><div class="focus-bottom"><button class="primary" data-action="timer" id="timer-button">${timerEnd?'Jeda fokus':'Mulai fokus'} ${ic('arrow')}</button><button class="secondary" data-action="timer-reset" aria-label="Atur ulang timer">↺</button><small>ONE THING AT A TIME.</small></div></section></div>`}
@@ -81,6 +82,7 @@ document.addEventListener('submit',async event=>{
     const response=await bridge.music.search({query});
     if(request!==musicSearchRequest||!results.isConnected)return;
     status.textContent=response.songs.length?'Pilih lagu untuk memutar.':'Lagu tidak ditemukan. Coba kata kunci lain.';
+    response.songs.forEach(song=>onlineSongs.set(song.id,song));
     results.innerHTML=response.songs.map(song=>`<div class="track-row"><button class="icon-btn" data-online-song="${esc(song.id)}" data-online-title="${esc(song.title)}" aria-label="Putar ${esc(song.title)}">${ic('play')}</button><div><b>${esc(song.title)}</b><small>${esc(song.artist)}</small></div></div>`).join('');
   }catch(error){if(status.isConnected)status.textContent=error.message||'Pencarian gagal. Coba lagi.';}
 });
@@ -97,7 +99,8 @@ async function nativeMusic(){
     stop:(options)=>music.stop(options),
     pause:(options)=>music.pause(options),
     resume:(options)=>music.resume(options),
-    seek:(options)=>music.seek(options)
+    seek:(options)=>music.seek(options),
+    lyrics:(options)=>music.lyrics(options)
   };
 }
 function useIframe(id){
@@ -105,6 +108,9 @@ function useIframe(id){
   $('#online-video').src='https://www.youtube.com/embed/'+encodeURIComponent(id)+'?playsinline=1&autoplay=1&origin='+encodeURIComponent(location.origin);
 }
 function renderNative(s){
+  onlineState=s;
+  updateOnlineCard();
+  if(onlineCurrent&&s.durationMs>0&&lyricsTrackKey!==onlineCurrent.id)void loadSongLyrics(onlineCurrent,s.durationMs/1000);
   const playing=!!s.playing,dur=s.durationMs>0?s.durationMs:0,seek=$('#online-seek');
   $('#online-toggle').innerHTML=ic(playing?'pause':'play');
   $('#np-toggle').innerHTML=ic(playing?'pause':'play');
@@ -126,7 +132,7 @@ async function pollNative(){
 let nativeResolving=false,nativeRequest=0,nativeStatusBusy=false;
 async function stopNative(){
   ++nativeRequest;nativeResolving=false;
-  clearInterval(nativeTimer);nativeTimer=null;nativeSong=null;$('#np').hidden=true;
+  clearInterval(nativeTimer);nativeTimer=null;nativeSong=null;onlineCurrent=null;onlineState={};++lyricsSequence;lyricsTrackKey='';refreshMusicCards();$('#np').hidden=true;
   void nativeMusic().then(m=>m.stop()).catch(()=>{});
 }
 document.addEventListener('click',async event=>{
@@ -143,7 +149,7 @@ document.addEventListener('click',async event=>{
   $('#online-video').hidden=true;$('#online-video').src='about:blank';$('#online-iframe-hint').hidden=true;
   $('#online-native').hidden=false;$('#online-fallback-btn').hidden=true;
   $('#online-state').textContent='Menyiapkan stream · perbaikan 09-11d…';$('#online-time').textContent='0:00 / 0:00';$('#online-seek').value=0;
-  const request=++nativeRequest;nativeSong={id,title};nativeResolving=true;$('#np-title').textContent=title;$('#np').hidden=false;
+  const request=++nativeRequest;nativeSong={id,title};onlineCurrent={...(onlineSongs.get(id)||{}),id,title};onlineState={state:'resolving'};onlineLyrics={state:'loading',lines:[],plain:''};lyricsTrackKey='';++lyricsSequence;refreshMusicCards();nativeResolving=true;$('#np-title').textContent=title;$('#np').hidden=false;
   clearInterval(nativeTimer);nativeTimer=setInterval(pollNative,1000);
   let timeoutId;
   const timeout=new Promise((_,reject)=>{timeoutId=setTimeout(()=>reject(new Error('Tidak ada jawaban dari plugin musik dalam 35 detik. Stream dihentikan.')),35000)});
@@ -157,7 +163,8 @@ document.addEventListener('click',async event=>{
     if(request!==nativeRequest)return;
     nativeResolving=false;
     clearInterval(nativeTimer);nativeTimer=null;
-    $('#online-state').textContent=error.message||'Lagu tidak bisa diputar.';
+    onlineState={state:'error',error:error.message||'Lagu tidak bisa diputar.'};updateOnlineCard();
+    $('#online-state').textContent=onlineState.error;
     // Cleanup must never delay the visible error: the native bridge may be unresponsive.
     void nativeMusic().then(m=>m.stop()).catch(()=>{});
     $('#online-fallback-btn').hidden=false;
@@ -170,7 +177,7 @@ $('#online-seek').addEventListener('change',async()=>{
   try{await (await nativeMusic()).seek({positionMs:position})}catch{}
   nativeSeeking=false;pollNative();
 });
-audio.addEventListener('play',async()=>{if(nativeSong){try{await (await nativeMusic()).pause()}catch{}}});
+audio.addEventListener('play',async()=>{if(onlineCurrent){onlineCurrent=null;++lyricsSequence;lyricsTrackKey='';refreshMusicCards()}if(nativeSong){try{await (await nativeMusic()).pause()}catch{}}});
 async function toggleNative(){
   if(!nativeSong)return;
   const m=await nativeMusic(),s=await m.status();
@@ -183,3 +190,75 @@ actions['online-toggle']=toggleNative;
 actions['np-toggle']=toggleNative;
 actions['np-stop']=stopNative;
 actions['online-fallback']=()=>{if(nativeSong)useIframe(nativeSong.id)};
+
+function parseLrc(text){
+  const lines=[];
+  const offsetMatch=String(text||'').match(/\[offset:([+-]?\d+)\]/i),offset=offsetMatch?Number(offsetMatch[1]):0;
+  for(const row of String(text||'').split(/\r?\n/)){
+    const stamps=[...row.matchAll(/\[(\d+):(\d{2})(?:[.:](\d{1,3}))?\]/g)];
+    const content=row.replace(/\[[^\]]*\]/g,'').trim();
+    if(!content)continue;
+    for(const stamp of stamps){const fraction=stamp[3]?Number('0.'+stamp[3]):0;lines.push({ms:Math.max(0,(Number(stamp[1])*60+Number(stamp[2])+fraction)*1000+offset),text:content});}
+  }
+  return lines.sort((a,b)=>a.ms-b.ms);
+}
+function activeLyric(lines,position){let active=-1;for(let i=0;i<lines.length&&lines[i].ms<=position;i++)active=i;return active;}
+function lyricsMarkup(){
+  if(onlineLyrics.state==='loading')return '<p class="lyrics-message">Mencari lirik…</p>';
+  if(onlineLyrics.state==='error')return '<p class="lyrics-message">Lirik belum bisa dimuat. <button class="text-btn" data-action="retry-lyrics">Coba lagi</button></p>';
+  if(onlineLyrics.instrumental)return '<p class="lyrics-message">Instrumental · tanpa lirik.</p>';
+  if(onlineLyrics.lines.length)return onlineLyrics.lines.map((line,i)=>`<button class="lyric-line" data-lyric-index="${i}" data-lyric-ms="${Math.round(line.ms)}">${esc(line.text)}</button>`).join('');
+  if(onlineLyrics.plain)return `<p class="plain-lyrics">${esc(onlineLyrics.plain)}</p>`;
+  return '<p class="lyrics-message">Lirik belum tersedia untuk lagu ini.</p>';
+}
+function onlineMusicCard(){
+  const song=onlineCurrent,playing=!!onlineState.playing;
+  const cover=String(song.cover||'').startsWith('https://')?song.cover:'';
+  return `<section data-music-card class="panel music-card online-now ${playing?'playing':''}"><div class="section-head"><h2>Sound of the day</h2><button class="text-btn" data-action="np-stop" aria-label="Hentikan lagu">×</button></div><div class="online-album-art">${cover?`<img src="${esc(cover)}" alt="Sampul ${esc(song.album||song.title)}" referrerpolicy="no-referrer" loading="eager">`:'<div class="vinyl-wrap"><div class="vinyl"></div></div>'}</div><h3 class="song-name">${esc(song.title)}</h3><p class="song-artist">${esc(song.artistName||song.artist||'Musik online')}</p><p class="song-album">${esc(song.album||'')}</p><input class="online-card-seek" type="range" min="0" max="${Math.max(1,onlineState.durationMs||0)}" value="${onlineState.positionMs||0}" aria-label="Posisi lagu online"><div class="card-time">${clock(onlineState.positionMs)} / ${clock(onlineState.durationMs)}</div><p class="card-stream-state" role="status"></p><div class="player-controls"><button data-action="online-previous" aria-label="Lagu sebelumnya">${ic('prev')}</button><button class="play" data-action="online-toggle" aria-label="Putar atau jeda">${ic(playing?'pause':'play')}</button><button data-action="online-next" aria-label="Lagu berikutnya">${ic('next')}</button></div><div class="lyrics-heading"><h3>Lirik</h3><small>LRCLIB</small></div><div class="song-lyrics" tabindex="0" aria-label="Lirik lagu">${lyricsMarkup()}</div></section>`;
+}
+function refreshMusicCards(){document.querySelectorAll('[data-music-card]').forEach(card=>{card.outerHTML=musicCard()});updateOnlineCard();}
+function updateOnlineCard(){
+  if(!onlineCurrent)return;
+  const s=onlineState,position=Math.max(0,s.positionMs||0),duration=Math.max(1,s.durationMs||0);
+  for(const card of document.querySelectorAll('.online-now')){
+    card.classList.toggle('playing',!!s.playing);
+    const slider=card.querySelector('.online-card-seek');
+    if(slider&&document.activeElement!==slider){slider.max=duration;slider.value=position;}
+    card.querySelector('.card-time').textContent=clock(position)+' / '+clock(s.durationMs);
+    card.querySelector('.card-stream-state').textContent=s.error||(s.state==='buffering'?'Memuat audio…':s.state==='resolving'?'Menyiapkan lagu…':'');
+    card.querySelector('[data-action="online-toggle"]').innerHTML=ic(s.playing?'pause':'play');
+    const active=activeLyric(onlineLyrics.lines,position);
+    for(const line of card.querySelectorAll('[data-lyric-index]')){
+      const current=Number(line.dataset.lyricIndex)===active,changed=current&&!line.classList.contains('current');
+      line.classList.toggle('current',current);
+      if(changed){const box=card.querySelector('.song-lyrics');if(Date.now()-(box.manualScrollAt||0)>4000)box.scrollTo({top:Math.max(0,line.offsetTop-box.offsetTop-box.clientHeight/2+line.clientHeight/2),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});}
+    }
+  }
+}
+async function loadSongLyrics(song,duration){
+  lyricsTrackKey=song.id;
+  const sequence=++lyricsSequence;
+  onlineLyrics={state:'loading',lines:[],plain:''};
+  document.querySelectorAll('.song-lyrics').forEach(el=>el.innerHTML=lyricsMarkup());
+  let timeoutId;
+  try{
+    const bridge=await nativeMusic();
+    const result=await Promise.race([bridge.lyrics({title:song.title,artist:song.artistName||'',album:song.album||'',duration}),new Promise((_,reject)=>{timeoutId=setTimeout(()=>reject(new Error('Lirik timeout')),22000)})]);
+    if(sequence!==lyricsSequence||onlineCurrent?.id!==song.id)return;
+    onlineLyrics={state:'ready',plain:result.plain||'',lines:parseLrc(result.synced),instrumental:!!result.instrumental};
+  }catch(error){if(sequence!==lyricsSequence)return;onlineLyrics={state:'error',plain:'',lines:[]};}
+  finally{clearTimeout(timeoutId);if(sequence===lyricsSequence){document.querySelectorAll('.song-lyrics').forEach(el=>el.innerHTML=lyricsMarkup());updateOnlineCard();}}
+}
+actions['retry-lyrics']=()=>{if(onlineCurrent)void loadSongLyrics(onlineCurrent,(onlineState.durationMs||0)/1000)};
+function adjacentOnline(direction){
+  const songs=[...onlineSongs.values()],index=songs.findIndex(s=>s.id===onlineCurrent?.id);
+  if(index<0||songs.length<2)return toast('Belum ada lagu lain dalam hasil pencarian.');
+  const next=songs[(index+direction+songs.length)%songs.length];
+  const button=document.querySelector(`[data-online-song="${next.id}"]`);
+  if(button)button.click();else toast('Cari lagu berikutnya melalui pencarian.');
+}
+actions['online-previous']=()=>adjacentOnline(-1);actions['online-next']=()=>adjacentOnline(1);
+document.addEventListener('change',event=>{if(event.target.matches('.online-card-seek'))void nativeMusic().then(m=>m.seek({positionMs:Number(event.target.value)})).then(pollNative).catch(()=>toast('Tidak dapat mengubah posisi lagu.'));});
+document.addEventListener('click',event=>{const button=event.target.closest('[data-lyric-ms]');if(button)void nativeMusic().then(m=>m.seek({positionMs:Number(button.dataset.lyricMs)})).then(pollNative).catch(()=>toast('Tidak dapat mengubah posisi lagu.'));});
+document.addEventListener('wheel',event=>{const box=event.target.closest('.song-lyrics');if(box)box.manualScrollAt=Date.now();},{passive:true});
+document.addEventListener('touchstart',event=>{const box=event.target.closest('.song-lyrics');if(box)box.manualScrollAt=Date.now();},{passive:true});
