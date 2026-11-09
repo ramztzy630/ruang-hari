@@ -86,7 +86,20 @@ document.addEventListener('submit',async event=>{
 });
 let nativeSong=null,nativeTimer=null,nativeSeeking=false;
 const clock=ms=>{const s=Math.max(0,Math.floor((ms||0)/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
-async function nativeMusic(){return (await import('./native.js')).music}
+async function nativeMusic(){
+  const {music}=await import('./native.js');
+  // Capacitor's Proxy generates a method for every property, including `then`.
+  // Never return that Proxy from async: Promise assimilation invokes plugin.then().
+  return {
+    diagnostics:(options)=>music.diagnostics(options),
+    playVideo:(options)=>music.playVideo(options),
+    status:(options)=>music.status(options),
+    stop:(options)=>music.stop(options),
+    pause:(options)=>music.pause(options),
+    resume:(options)=>music.resume(options),
+    seek:(options)=>music.seek(options)
+  };
+}
 function useIframe(id){
   $('#online-native').hidden=true;$('#online-video').hidden=false;$('#online-iframe-hint').hidden=false;
   $('#online-video').src='https://www.youtube.com/embed/'+encodeURIComponent(id)+'?playsinline=1&autoplay=1&origin='+encodeURIComponent(location.origin);
@@ -129,7 +142,7 @@ document.addEventListener('click',async event=>{
   if(!window.Capacitor?.isNativePlatform?.()){useIframe(id);return}
   $('#online-video').hidden=true;$('#online-video').src='about:blank';$('#online-iframe-hint').hidden=true;
   $('#online-native').hidden=false;$('#online-fallback-btn').hidden=true;
-  $('#online-state').textContent='Menyiapkan stream · perbaikan 09-11c…';$('#online-time').textContent='0:00 / 0:00';$('#online-seek').value=0;
+  $('#online-state').textContent='Menyiapkan stream · perbaikan 09-11d…';$('#online-time').textContent='0:00 / 0:00';$('#online-seek').value=0;
   const request=++nativeRequest;nativeSong={id,title};nativeResolving=true;$('#np-title').textContent=title;$('#np').hidden=false;
   clearInterval(nativeTimer);nativeTimer=setInterval(pollNative,1000);
   let timeoutId;

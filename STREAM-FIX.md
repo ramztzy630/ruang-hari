@@ -1,9 +1,10 @@
-# Native bridge error handling — 09-11c
+# 09-11d: fix Capacitor Proxy Promise assimilation
 
-Fix confirmed in source: JS catch awaited native stop before showing the error. A nonresponsive native stop could therefore hide the resolver deadline indefinitely. Error display now happens before fire-and-forget cleanup. Module import and playback are both inside the deadline race; status polling has its own timeout.
+Confirmed root cause of the missing native diagnostics response:
+`async function nativeMusic(){ return module.music }` returned a Capacitor plugin Proxy. Its get trap generates a function for `then`, so JavaScript Promise resolution calls a phantom plugin.then(resolve, reject) instead of resolving to the plugin. Consequently callers never reach diagnostics, playVideo, status or stop. This is independent of stream transport.
 
-Java playVideo initialization is moved off the shared Capacitor plugin thread. Throwable during initialization (including missing runtime classes and initializer errors) is logged and returned to JS instead of leaving a call unresolved. A diagnostics method identifies the native plugin revision, detecting stale native code in a rebuilt UI.
+The helper now returns a plain object of explicitly bound forwarding functions. It has no then property. Search previously worked because it accessed bridge.music.search directly instead of returning the Proxy from an async function.
 
-Tests executed: JS syntax; VM simulation confirms timeout text is visible when playVideo, status and stop never resolve; native initialization rejection text is visible. Android compilation and real YouTube playback were not verified in this environment. No claim that a timeout fix alone repairs upstream stream availability.
+Regression test reproduces the old unresolved promise with a Proxy matching the get trap in the bundled Capacitor runtime. The new helper resolves and dispatches diagnostics, playVideo, status, stop, pause, resume and seek without touching plugin.then. JS syntax also passes. Source includes the regression test under scripts/check-music-proxy.cjs.
 
-Upload the entire extracted contents to repository root, including .github, native and scripts. Run the included Actions workflow and update the installed APK. The player must show Native 09-11c connected or an explicit mismatch/error. Capture the exact displayed error if extraction fails.
+Upload all ZIP contents at repository root and rebuild the APK using the included Actions workflow. This removes the confirmed bridge stall; actual Android extraction and playback still require device testing. No success claim about upstream YouTube streams is implied by the JavaScript regression test.
