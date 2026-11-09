@@ -70,3 +70,38 @@ body.player-modal-open{overflow:hidden}body.player-modal-open #np{display:none!i
 .search-song{width:100%;display:flex;align-items:center;gap:14px;border:0;text-align:left;cursor:pointer;color:inherit;font:inherit;min-height:80px;padding:12px!important;border-radius:18px;background:#ffffff65}
 .search-song:focus-visible{outline:2px solid #56604c;outline-offset:2px}.search-cover{position:relative;display:block;width:58px;height:58px;flex:0 0 58px;border-radius:12px;overflow:hidden;background:#dce1d5}.search-cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.search-cover-placeholder{display:grid;place-items:center;width:100%;height:100%;color:#6a755f}.search-cover-placeholder svg{width:24px;height:24px}.search-cover-play{position:absolute;right:3px;bottom:3px;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#151b14c9;color:#fff}.search-cover-play svg{width:12px;height:12px}.search-track-meta{min-width:0;display:flex;flex-direction:column;gap:5px}.search-track-meta b{font-size:14px;line-height:1.4}.search-track-meta small{font-size:11px;color:#7b8273;line-height:1.5;overflow-wrap:anywhere}
 @media(max-height:600px){#fit-now-playing .lyric-subtitle{min-height:48px;padding:6px 0}#fit-now-playing .active-subtitle{font-size:16px}}
+/* Perbaikan tata letak: hasil pencarian rata kiri, tombol tutup/× lebih mudah disentuh */
+.search-song{justify-content:flex-start;text-align:left}
+.search-track-meta{flex:1 1 auto;min-width:0;align-items:flex-start;text-align:left}
+.search-track-meta b,.search-track-meta small{display:block;width:100%;text-align:left;overflow-wrap:anywhere}
+.online-now .song-name,#fit-now-playing .song-name{align-self:flex-start;text-align:left}
+.online-now .section-head>.text-btn:first-child{min-height:44px;padding:0 4px;font-size:13px}
+.online-now .section-head>.text-btn:last-child{width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border-radius:50%;font-size:28px;line-height:1;color:#fff;background:#ffffff1f}
+.online-now .section-head>.text-btn:last-child:active{background:#ffffff38}
+
+/* Playlist */
+.playlist-panel{margin-bottom:18px}
+.pl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+.pl-card{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:10px;padding:10px;text-align:left;background:#fff6;border-radius:18px}
+.pl-cover{position:relative;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;aspect-ratio:1;border-radius:12px;overflow:hidden;background:#dce1d5;color:#6a755f}
+.pl-cover img{width:100%;height:100%;object-fit:cover;display:block;min-height:0}
+.pl-cover.single{grid-template-columns:1fr;grid-template-rows:1fr}
+.pl-cover-empty{grid-column:1/-1;grid-row:1/-1;display:grid;place-items:center}
+.pl-cover-empty svg{width:32px;height:32px}
+.pl-cover.sm{width:58px;height:58px;flex:0 0 58px;aspect-ratio:auto;border-radius:12px}
+.pl-cover.sm .pl-cover-empty svg{width:22px;height:22px}
+.pl-meta{display:flex;flex-direction:column;gap:3px;min-width:0;text-align:left}
+.pl-meta b{font-size:13px;line-height:1.35;overflow-wrap:anywhere}
+.pl-meta small{font-size:11px;color:#7b8273}
+.search-row{display:flex;align-items:center;gap:8px}
+.search-row .search-song{flex:1 1 auto;width:auto;min-width:0}
+.row-add{flex:0 0 44px;width:44px;height:44px}
+.pl-pick{width:100%}
+.pl-pick .pl-check{margin-left:auto;min-width:22px;text-align:center;font-size:17px;color:#4f6b3f}
+.pl-pick-list{margin-top:14px}
+.pl-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 16px}
+.pl-songs{margin-top:4px}
+#playlist-dialog,#playlist-picker{max-height:88dvh;overflow:auto}
+#playlist-dialog .modal-head h2,#playlist-picker .modal-head h2{overflow-wrap:anywhere}
+.online-now .player-controls{position:relative}
+.online-now .player-controls .card-add{position:absolute;right:0;top:50%;transform:translateY(-50%);width:44px;height:44px;background:#ffffff1f}

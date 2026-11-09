@@ -6,9 +6,9 @@ assert(c.hdArtwork('https://lh3.googleusercontent.com/art=s100').endsWith('s600'
 assert(c.hdArtwork('https://i.ytimg.com/vi/abc/hqdefault.jpg').endsWith('maxresdefault.jpg'));
 assert.equal(c.hdArtwork('javascript:alert(1)'),'');assert.equal(c.hdArtwork('invalid'),'');
 const html=c.searchSongMarkup({id:'abcdefghijk',title:'<script>x</script>',artist:'Artist',cover:'https://lh3.googleusercontent.com/art=w60-h60',coverFallback:'https://lh3.googleusercontent.com/art=w60-h60'});
-assert(html.startsWith('<button'));assert(html.includes('data-online-song="abcdefghijk"'));assert(html.includes('<img'));assert(html.includes('w600-h600'));assert(!html.includes('<script>'));
+assert(html.startsWith('<div class="search-row"><button'));assert(html.includes('data-add-playlist="abcdefghijk"'));assert(html.includes('data-online-song="abcdefghijk"'));assert(html.includes('<img'));assert(html.includes('w600-h600'));assert(!html.includes('<script>'));
 const nodes=new Map();c.$=selector=>{if(!nodes.has(selector))nodes.set(selector,{});return nodes.get(selector)};
-Object.assign(c,{onlineCurrent:{id:'old',title:'Old'},onlineState:{},onlineSongs:new Map(),nativeResolving:false,nativeSong:{},onlineLyrics:{lines:[]},lyricsSequence:0,lyricsTrackKey:'old',fullLyricsDialog:{open:false},syncSubtitle(){},updateOnlineCard(){},refreshMusicCards(){},positionMiniPlayer(){},clock:()=>'',nativeSeeking:false});
+Object.assign(c,{onlineCurrent:{id:'old',title:'Old'},onlineState:{},onlineSongs:new Map(),nativeResolving:false,nativeSong:{},onlineLyrics:{lines:[]},lyricsSequence:0,lyricsTrackKey:'old',fullLyricsDialog:{open:false},syncSubtitle(){},updateOnlineCard(){},refreshMusicCards(){},positionMiniPlayer(){},clock:()=>'',nativeSeeking:false,queueSong:()=>undefined});
 let loaded;c.loadSongLyrics=(song)=>{loaded=song.id};vm.runInContext(src.slice(src.indexOf('function renderNative(s)'),src.indexOf('async function pollNative(')),c);
 c.renderNative({videoId:'newSong1234',metadata:{title:'Next',artistName:'Next artist'},state:'ready',playing:true,durationMs:120000,positionMs:1});
 assert.equal(c.onlineCurrent.id,'newSong1234');assert.equal(nodes.get('#np-title').textContent,'Next');assert.equal(loaded,'newSong1234');
