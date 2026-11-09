@@ -101,8 +101,10 @@ function renderNative(s){
   $('#online-state').textContent=s.error||(s.state==='buffering'?'Memuat…':s.state==='ended'?'Selesai':playing?'Sedang diputar':'Dijeda');
   $('#online-fallback-btn').hidden=!s.error;
 }
-async function pollNative(){if(!nativeSong)return;try{renderNative(await (await nativeMusic()).status())}catch{}}
+async function pollNative(){if(!nativeSong||nativeResolving)return;try{renderNative(await (await nativeMusic()).status())}catch(error){console.warn('Music status:',error)}}
+let nativeResolving=false;
 async function stopNative(){
+  nativeResolving=false;
   clearInterval(nativeTimer);nativeTimer=null;nativeSong=null;$('#np').hidden=true;
   try{await (await nativeMusic()).stop()}catch{}
 }
@@ -120,16 +122,18 @@ document.addEventListener('click',async event=>{
   $('#online-video').hidden=true;$('#online-video').src='about:blank';$('#online-iframe-hint').hidden=true;
   $('#online-native').hidden=false;$('#online-fallback-btn').hidden=true;
   $('#online-state').textContent='Menyiapkan stream…';$('#online-time').textContent='0:00 / 0:00';$('#online-seek').value=0;
-  nativeSong={id,title};$('#np-title').textContent=title;
+  nativeSong={id,title};nativeResolving=true;$('#np-title').textContent=title;
   clearInterval(nativeTimer);nativeTimer=setInterval(pollNative,1000);
   const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Resolver tidak merespons dalam 45 detik. Coba lagu lain.')),45000));
   try{
     await Promise.race([(await nativeMusic()).playVideo({videoId:id}),timeout]);
     if(nativeSong?.id!==id)return;
+    nativeResolving=false;
     $('#np').hidden=false;
     pollNative();
   }catch(error){
     if(nativeSong?.id!==id)return;
+    nativeResolving=false;
     clearInterval(nativeTimer);nativeTimer=null;
     $('#online-state').textContent=error.message||'Lagu tidak bisa diputar.';
     $('#online-fallback-btn').hidden=false;

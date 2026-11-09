@@ -98,10 +98,11 @@ object StreamResolver {
                     }
                 }
                 stream = withTimeout(35_000L) { extract(videoId) }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                Log.e(TAG, "Timeout resolver untuk videoId=$videoId", e)
+                message = "Resolver stream melewati batas 35 detik. Periksa jaringan atau coba lagu lain."
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                message = "Resolver stream melewati batas 35 detik. Periksa jaringan atau coba lagu lain."
             } catch (e: StreamResolveException) {
                 Log.w(TAG, "resolve gagal: reason=${e.reason}", e)
                 message =
