@@ -31,14 +31,24 @@ jobs:
           echo "$JAVA_HOME_21_X64/bin" >> "$GITHUB_PATH"
           "$JAVA_HOME_21_X64/bin/java" -version
 
+      
       - name: Install Android SDK 37
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager \
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -f "$SDKMANAGER" ]; then
+            echo "Android SDK Manager tidak ditemukan"
+            exit 1
+          fi
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
             "platforms;android-37" \
             "build-tools;35.0.0" \
             "platform-tools"
+
 
       - name: Install dependencies
         run: npm ci
